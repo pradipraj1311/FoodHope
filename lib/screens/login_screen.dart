@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'signup_screen.dart';
 class LoginScreen extends StatelessWidget {
   final String role; // Accepts the selected role
 
@@ -53,6 +53,20 @@ class LoginScreen extends StatelessWidget {
                 child: const Text("Login", style: TextStyle(fontSize: 18)),
               ),
             ),
+              // ... existing login button code ...
+
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SignupScreen(role: role),
+                    ),
+                  );
+                },
+                child: const Text("Don't have an account? Sign Up"),
+              ),
           ],
         ),
       ),
