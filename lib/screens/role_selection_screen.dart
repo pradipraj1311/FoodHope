@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
 import '../widgets/role_card.dart';
+import 'login_screen.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
+  void navigateToLogin(BuildContext context,String selectedRole ){
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context)=>LoginScreen(role:selectedRole),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,33 +40,25 @@ class RoleSelectionScreen extends StatelessWidget {
             RoleCard(
               title: "Donor",
               icon: Icons.restaurant,
-              onTap: () {
-                print("Donor selected");
-              },
+              onTap: ()=>navigateToLogin(context,"Donor"),
             ),
 
             RoleCard(
               title: "Volunteer",
               icon: Icons.delivery_dining,
-              onTap: () {
-                print("Volunteer selected");
-              },
+              onTap: ()=>navigateToLogin(context,"Volunteer"),
             ),
 
             RoleCard(
               title: "NGO",
               icon: Icons.groups,
-              onTap: () {
-                print("NGO selected");
-              },
+              onTap: ()=>navigateToLogin(context,"NGO"),
             ),
 
             RoleCard(
               title: "Admin",
               icon: Icons.admin_panel_settings,
-              onTap: () {
-                print("Admin selected");
-              },
+              onTap: ()=>navigateToLogin(context,"Admin"),
             ),
 
           ],
