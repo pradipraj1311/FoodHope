@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart'; // Add this new import
 
 class VolunteerProfileSetup extends StatefulWidget {
   const VolunteerProfileSetup({super.key});
@@ -40,7 +41,6 @@ class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
     if (permission == LocationPermission.deniedForever) return null;
     return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
-
   Future<void> saveProfile() async {
     setState(() => isLoading = true);
 
@@ -51,6 +51,13 @@ class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
         return;
       }
 
+      // NEW: Convert GPS to readable text
+      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      Placemark place = placemarks[0];
+      String city = place.locality ?? "Unknown City";
+      String state = place.administrativeArea ?? "Unknown State";
+      String country = place.country ?? "Unknown Country";
+
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
@@ -59,8 +66,13 @@ class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
         'travelRadiusKm': travelRadius,
         'isAffiliatedWithNgo': isAffiliatedWithNgo,
         'affiliatedNgoName': isAffiliatedWithNgo ? affiliatedNgoController.text.trim() : "Independent",
+        // NEW: Location details
         'latitude': position.latitude,
         'longitude': position.longitude,
+        'city': city,
+        'state': state,
+        'country': country,
+        'address': "${place.street}, $city",
         'isProfileComplete': true,
       });
 

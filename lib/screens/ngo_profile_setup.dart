@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart'; // Add this new import
 
 class NgoProfileSetup extends StatefulWidget {
   const NgoProfileSetup({super.key});
@@ -45,7 +46,6 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
     if (permission == LocationPermission.deniedForever) return null;
     return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
-
   Future<void> saveProfile() async {
     if (orgNameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter Organization Name.")));
@@ -60,6 +60,13 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
         return;
       }
 
+      // NEW: Convert GPS to readable text
+      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      Placemark place = placemarks[0];
+      String city = place.locality ?? "Unknown City";
+      String state = place.administrativeArea ?? "Unknown State";
+      String country = place.country ?? "Unknown Country";
+
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
@@ -68,8 +75,13 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
         'storageCapacity': selectedStorage,
         'feedingCapacity': selectedCapacity,
         'preferredReceiveTime': selectedReceiveTime,
+        // NEW: Location details
         'latitude': position.latitude,
         'longitude': position.longitude,
+        'city': city,
+        'state': state,
+        'country': country,
+        'address': "${place.street}, $city",
         'isProfileComplete': true,
       });
 
@@ -80,7 +92,6 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
       if (mounted) setState(() => isLoading = false);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

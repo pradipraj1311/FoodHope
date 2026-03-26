@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart'; // Add this new import
 
 class DonorProfileSetup extends StatefulWidget {
   const DonorProfileSetup({super.key});
@@ -48,13 +49,11 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
     if (permission == LocationPermission.deniedForever) return null;
     return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
-
   Future<void> saveProfile() async {
     if (businessNameController.text.isEmpty || contactNameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter Business and Contact names.")));
       return;
     }
-
     setState(() => isLoading = true);
 
     try {
@@ -63,6 +62,13 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
         setState(() => isLoading = false);
         return;
       }
+
+      // NEW: Convert GPS to readable text
+      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      Placemark place = placemarks[0];
+      String city = place.locality ?? "Unknown City";
+      String state = place.administrativeArea ?? "Unknown State";
+      String country = place.country ?? "Unknown Country";
 
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -73,13 +79,17 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
         'pickupInstructions': selectedPickup,
         'surplusFrequency': selectedFrequency,
         'hasFoodSafetyCert': hasFoodSafetyCert,
+        // NEW: Location details
         'latitude': position.latitude,
         'longitude': position.longitude,
+        'city': city,
+        'state': state,
+        'country': country,
+        'address': "${place.street}, $city",
         'isProfileComplete': true,
       });
 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Donor Profile Complete!")));
-      // TODO: Navigate to Donor Dashboard
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
