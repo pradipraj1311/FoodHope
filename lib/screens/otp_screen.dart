@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'donor_dashboard.dart';
 import 'donor_profile_setup.dart';
 import 'ngo_profile_setup.dart';
 import 'volunteer_profile_setup.dart';
@@ -90,6 +90,7 @@ class _OtpScreenState extends State<OtpScreen> {
       String safeRole = currentRole.toLowerCase();
 
       if (!isProfileComplete) {
+        // 1. INCOMPLETE PROFILES -> Go to Setup Screens
         if (safeRole.contains('donor')) {
           Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const DonorProfileSetup()), (route) => false);
         } else if (safeRole.contains('ngo')) {
@@ -100,7 +101,18 @@ class _OtpScreenState extends State<OtpScreen> {
           print("Error: Unknown Role - $safeRole");
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Welcome back to the $currentRole Dashboard!")));
+        // 2. COMPLETE PROFILES -> Go to Dashboards
+        print("Navigating to $currentRole Dashboard..."); // Replaced SnackBar with a print!
+
+        if (safeRole.contains('donor')) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const DonorDashboard()), (route) => false);
+        } else if (safeRole.contains('ngo')) {
+          // TODO: Build NgoDashboard
+          print("NGO Dashboard coming next!");
+        } else if (safeRole.contains('volunteer')) {
+          // TODO: Build VolunteerDashboard
+          print("Volunteer Dashboard coming next!");
+        }
       }
 
     } on FirebaseAuthException catch (e) {
@@ -108,6 +120,7 @@ class _OtpScreenState extends State<OtpScreen> {
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+
   }
 
   @override
