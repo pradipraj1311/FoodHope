@@ -5,6 +5,8 @@ import 'donor_dashboard.dart';
 import 'donor_profile_setup.dart';
 import 'ngo_profile_setup.dart';
 import 'volunteer_profile_setup.dart';
+import 'ngo_dashboard.dart';
+import 'volunteer_dashboard.dart';
 
 class OtpScreen extends StatefulWidget {
   final String verificationId;
@@ -102,16 +104,14 @@ class _OtpScreenState extends State<OtpScreen> {
         }
       } else {
         // 2. COMPLETE PROFILES -> Go to Dashboards
-        print("Navigating to $currentRole Dashboard..."); // Replaced SnackBar with a print!
+        print("Navigating to $currentRole Dashboard...");
 
         if (safeRole.contains('donor')) {
           Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const DonorDashboard()), (route) => false);
         } else if (safeRole.contains('ngo')) {
-          // TODO: Build NgoDashboard
-          print("NGO Dashboard coming next!");
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const NgoDashboard()), (route) => false);
         } else if (safeRole.contains('volunteer')) {
-          // TODO: Build VolunteerDashboard
-          print("Volunteer Dashboard coming next!");
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const VolunteerDashboard()), (route) => false);
         }
       }
 
