@@ -16,7 +16,6 @@ class DonorHistoryTab extends StatelessWidget {
           child: Text("Impact Analytics 📊", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         ),
 
-        // --- REAL TIME ML & ANALYTICS HEADER ---
         StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
             builder: (context, userSnapshot) {
@@ -76,23 +75,30 @@ class DonorHistoryTab extends StatelessWidget {
           child: Text("Past Deliveries", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ),
 
-        // --- HISTORICAL FEED ---
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
+            // FIX: Removed the server-side orderBy to prevent the composite index crash
             stream: FirebaseFirestore.instance.collection('donations')
                 .where('donorUid', isEqualTo: uid)
                 .where('status', isEqualTo: 'Completed')
-                .orderBy('postedAt', descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No completed donations yet. Post your first rescue!", style: TextStyle(color: Colors.grey)));
 
+              // FIX: Client-side sorting so the newest posts always stay at the top without flickering!
+              var docs = snapshot.data!.docs;
+              docs.sort((a, b) {
+                Timestamp timeA = (a.data() as Map<String, dynamic>)['postedAt'] as Timestamp;
+                Timestamp timeB = (b.data() as Map<String, dynamic>)['postedAt'] as Timestamp;
+                return timeB.compareTo(timeA);
+              });
+
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: snapshot.data!.docs.length,
+                itemCount: docs.length,
                 itemBuilder: (context, index) {
-                  var post = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                  var post = docs[index].data() as Map<String, dynamic>;
                   return Card(
                     elevation: 1,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -27,35 +27,28 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     }
   }
 
-  // --- IMPROVED IMAGE PICKER ---
   Future<void> _pickAndUploadImage() async {
     try {
       final picker = ImagePicker();
-      // Using gallery. If it fails on emulator, we catch the error gracefully.
       final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
 
       if (pickedFile != null) {
         setState(() => isUploading = true);
         File imageFile = File(pickedFile.path);
-
-        // Upload to Firebase
         final storageRef = FirebaseStorage.instance.ref().child('profile_images').child('${widget.uid}.jpg');
         await storageRef.putFile(imageFile);
-
         String downloadUrl = await storageRef.getDownloadURL();
         await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': downloadUrl});
-
         widget.onProfileUpdated();
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Picture Updated!")));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload Failed (Check Permissions/Storage Rules): $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload Failed (Check Firebase Billing): $e")));
     } finally {
       setState(() => isUploading = false);
     }
   }
 
-  // Helper widget to add the Red Star (*)
   Widget _requiredLabel(String text) {
     return Text.rich(
       TextSpan(
@@ -70,17 +63,25 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     TextEditingController nameController = TextEditingController(text: widget.userData['name']);
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact']);
 
-    // AGE LOGIC: Generate list from 13 to 80!
     List<String> ageOptions = List.generate(68, (index) => (13 + index).toString());
-    String currentAgeStr = widget.userData['age']?.toString() ?? '18'; // Default to 18
+    String currentAgeStr = widget.userData['age']?.toString() ?? '18';
     String selectedAge = ageOptions.contains(currentAgeStr) && currentAgeStr != '0' ? currentAgeStr : '18';
 
     String selectedGender = widget.userData['gender'] ?? 'Male';
-
     String selectedFood = widget.userData['foodPreference'] ?? 'Any Food (Veg & Non-Veg)';
     String selectedStorage = widget.userData['storageCapacity'] ?? 'Backpack / Small Bag';
+
     String selectedRange = widget.userData['travelRange'] ?? 'Up to 5 km';
+    List<String> rangeOptions = ['Up to 3 km', 'Up to 5 km', 'Up to 10 km', 'Up to 20 km', 'Up to 30 km', 'Anywhere in City'];
+    if (!rangeOptions.contains(selectedRange)) selectedRange = 'Up to 5 km';
+
     String selectedTime = widget.userData['bestTime'] ?? 'Anytime';
+
+    // NEW: NGO AFFILIATION VARIABLES
+    bool isAffiliated = widget.userData['isAffiliatedWithNgo'] ?? false;
+    String initialNgo = widget.userData['affiliatedNgoName'] ?? '';
+    if (initialNgo == 'Independent') initialNgo = '';
+    TextEditingController ngoController = TextEditingController(text: initialNgo);
 
     showModalBottomSheet(
       context: context,
@@ -95,13 +96,10 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text("Edit Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), // Changed Title
+                    const Text("Edit Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 15),
 
-                    TextField(
-                        controller: nameController,
-                        decoration: InputDecoration(label: _requiredLabel("Full Name"), border: const OutlineInputBorder())
-                    ),
+                    TextField(controller: nameController, decoration: InputDecoration(label: _requiredLabel("Full Name"), border: const OutlineInputBorder())),
                     const SizedBox(height: 10),
 
                     Row(
@@ -126,12 +124,22 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                        controller: phoneController,
-                        decoration: InputDecoration(label: _requiredLabel("Phone/Contact"), border: const OutlineInputBorder())
-                    ),
+                    TextField(controller: phoneController, decoration: InputDecoration(label: _requiredLabel("Phone/Contact"), border: const OutlineInputBorder())),
 
-                    const Divider(height: 30, thickness: 2),
+                    const Divider(height: 25, thickness: 2),
+
+                    // NGO AFFILIATION TOGGLE
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Are you delivering for an NGO?", style: TextStyle(fontWeight: FontWeight.bold)),
+                      value: isAffiliated,
+                      onChanged: (val) => setModalState(() => isAffiliated = val),
+                    ),
+                    if (isAffiliated) ...[
+                      TextField(controller: ngoController, decoration: InputDecoration(label: _requiredLabel("Enter NGO Name"), border: const OutlineInputBorder())),
+                    ],
+
+                    const Divider(height: 25, thickness: 2),
                     const Text("Delivery Capabilities", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
                     const SizedBox(height: 15),
 
@@ -154,7 +162,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                     DropdownButtonFormField<String>(
                       value: selectedRange,
                       decoration: InputDecoration(label: _requiredLabel("Travel Range"), border: const OutlineInputBorder()),
-                      items: ['Up to 3 km', 'Up to 5 km', 'Up to 10 km', 'Up to 20 km', 'Up to 30 km', 'Anywhere in City'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      items: rangeOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => selectedRange = val!),
                     ),
                     const SizedBox(height: 10),
@@ -172,7 +180,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
                         onPressed: () async {
-                          if (nameController.text.isEmpty || phoneController.text.isEmpty) {
+                          if (nameController.text.isEmpty || phoneController.text.isEmpty || (isAffiliated && ngoController.text.isEmpty)) {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields!")));
                             return;
                           }
@@ -186,12 +194,11 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                             'storageCapacity': selectedStorage,
                             'travelRange': selectedRange,
                             'bestTime': selectedTime,
+                            'isAffiliatedWithNgo': isAffiliated,
+                            'affiliatedNgoName': isAffiliated ? ngoController.text.trim() : "Independent", // Saves beautiful name
                           });
                           widget.onProfileUpdated();
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Updated Successfully!")));
-                          }
+                          if (mounted) Navigator.pop(context);
                         },
                         child: const Text("Save Changes", style: TextStyle(fontSize: 18)),
                       ),
@@ -222,23 +229,13 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  CircleAvatar(
-                    radius: 45,
-                    backgroundColor: Colors.green.shade100,
-                    backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
-                    child: profileUrl.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.green) : null,
-                  ),
+                  CircleAvatar(radius: 45, backgroundColor: Colors.green.shade100, backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null, child: profileUrl.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.green) : null),
                   if (isUploading) const CircularProgressIndicator(color: Colors.green),
                   if (!isUploading) CircleAvatar(radius: 15, backgroundColor: Colors.white, child: Icon(Icons.camera_alt, size: 18, color: Colors.grey.shade800)),
                 ],
               ),
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200, foregroundColor: Colors.black87, elevation: 0),
-              onPressed: _showEditProfileSheet,
-              icon: const Icon(Icons.edit, size: 18),
-              label: const Text("Edit Profile"),
-            )
+            ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200, foregroundColor: Colors.black87, elevation: 0), onPressed: _showEditProfileSheet, icon: const Icon(Icons.edit, size: 18), label: const Text("Edit Profile"))
           ],
         ),
         const SizedBox(height: 20),
@@ -246,10 +243,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
         Text(widget.userData['contact'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 16)),
 
         if (widget.userData.containsKey('age') && widget.userData.containsKey('gender'))
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text("${widget.userData['gender']}, ${widget.userData['age']} yrs", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-          ),
+          Padding(padding: const EdgeInsets.only(top: 8.0), child: Text("${widget.userData['gender']}, ${widget.userData['age']} yrs", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
 
         const SizedBox(height: 30),
 
@@ -258,29 +252,11 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             children: [
-              ListTile(
-                  leading: const Icon(Icons.local_dining, color: Colors.orange),
-                  title: const Text("Food Type"),
-                  trailing: Text(widget.userData['foodPreference'] ?? 'Any Food', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
-              ),
+              ListTile(leading: const Icon(Icons.group, color: Colors.orange), title: const Text("Affiliation"), trailing: Text((widget.userData['isAffiliatedWithNgo'] == true) ? widget.userData['affiliatedNgoName'] : "Independent", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
               const Divider(height: 0),
-              ListTile(
-                  leading: const Icon(Icons.inventory_2, color: Colors.blue),
-                  title: const Text("Capacity"),
-                  trailing: Text(widget.userData['storageCapacity'] ?? 'Backpack', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
-              ),
+              ListTile(leading: const Icon(Icons.inventory_2, color: Colors.blue), title: const Text("Capacity"), trailing: Text(widget.userData['storageCapacity'] ?? 'Backpack', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
               const Divider(height: 0),
-              ListTile(
-                  leading: const Icon(Icons.map, color: Colors.green),
-                  title: const Text("Range"),
-                  trailing: Text(widget.userData['travelRange'] ?? 'Up to 5 km', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
-              ),
-              const Divider(height: 0),
-              ListTile(
-                  leading: const Icon(Icons.schedule, color: Colors.purple),
-                  title: const Text("Available"),
-                  trailing: Text(widget.userData['bestTime'] ?? 'Anytime', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
-              ),
+              ListTile(leading: const Icon(Icons.map, color: Colors.green), title: const Text("Range"), trailing: Text(widget.userData['travelRange'] ?? 'Up to 5 km', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
             ],
           ),
         ),
@@ -288,9 +264,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
         const SizedBox(height: 30),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.red, padding: const EdgeInsets.all(15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          onPressed: _logout,
-          icon: const Icon(Icons.logout),
-          label: const Text("Log Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          onPressed: _logout, icon: const Icon(Icons.logout), label: const Text("Log Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         )
       ],
     );

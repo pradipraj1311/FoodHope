@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart'; // Add this new import
+import 'package:geocoding/geocoding.dart';
+import 'donor_dashboard.dart';
 
 class NgoProfileSetup extends StatefulWidget {
   const NgoProfileSetup({super.key});

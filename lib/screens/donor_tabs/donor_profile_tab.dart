@@ -59,13 +59,19 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
   void _showEditProfileSheet() {
     TextEditingController businessNameController = TextEditingController(text: widget.userData['businessName'] ?? '');
     TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName'] ?? '');
-    // NEW: ADDED PHONE NUMBER CONTROLLER
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
+
+    TextEditingController exactAddressController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
+    // NEW: STREET / AREA CONTROLLER
+    TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
     TextEditingController landmarkController = TextEditingController(text: widget.userData['landmark'] ?? '');
-    TextEditingController instructionsController = TextEditingController(text: widget.userData['pickupInstructions'] ?? '');
 
     String donorType = widget.userData['donorType'] ?? 'Restaurant';
     String surplusFrequency = widget.userData['surplusFrequency'] ?? 'Occasional / Unpredictable';
+
+    String selectedPickup = widget.userData['pickupInstructions'] ?? 'Hand to front desk / reception';
+    List<String> pickupOptions = ['Hand to front desk / reception', 'Call upon arrival, I will bring it out', 'Pick up from back door / kitchen', 'Self-pickup from designated counter', 'Other (Call me for details)'];
+    if (!pickupOptions.contains(selectedPickup)) selectedPickup = pickupOptions[0];
 
     showModalBottomSheet(
       context: context,
@@ -85,21 +91,53 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                     const SizedBox(height: 15),
 
                     TextField(controller: businessNameController, decoration: InputDecoration(label: _requiredLabel("Business/Entity Name"), border: const OutlineInputBorder())),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 10),
 
                     TextField(controller: contactNameController, decoration: InputDecoration(label: _requiredLabel("Primary Contact Name"), border: const OutlineInputBorder())),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 10),
 
-                    // NEW: ADDED PHONE NUMBER TO UI
                     TextField(
                         controller: phoneController,
                         keyboardType: TextInputType.phone,
                         decoration: InputDecoration(label: _requiredLabel("Phone Number (For Volunteers)"), border: const OutlineInputBorder())
                     ),
+
+                    const Divider(height: 25, thickness: 2),
+                    const Text("Exact Location Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
                     const SizedBox(height: 15),
 
+                    TextField(
+                        controller: exactAddressController,
+                        decoration: InputDecoration(
+                            label: _requiredLabel("Flat / Building / Hostel Name"),
+                            hintText: "e.g., LS Boys Hostel, L Complex",
+                            border: const OutlineInputBorder()
+                        )
+                    ),
+                    const SizedBox(height: 10),
+
+                    // NEW: REQUIRED STREET FIELD
+                    TextField(
+                        controller: streetController,
+                        decoration: InputDecoration(
+                            label: _requiredLabel("Street / Road / Area"),
+                            hintText: "e.g., Uttarsanda Road, Piplag",
+                            border: const OutlineInputBorder()
+                        )
+                    ),
+                    const SizedBox(height: 10),
+
                     TextField(controller: landmarkController, decoration: const InputDecoration(labelText: "Nearby Landmark (Optional)", border: OutlineInputBorder())),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 10),
+
+                    DropdownButtonFormField<String>(
+                      value: selectedPickup,
+                      decoration: InputDecoration(label: _requiredLabel("Default Pickup Instructions"), border: const OutlineInputBorder()),
+                      items: pickupOptions.map((val) => DropdownMenuItem(value: val, child: Text(val, overflow: TextOverflow.ellipsis))).toList(),
+                      onChanged: (val) => setModalState(() => selectedPickup = val!),
+                    ),
+
+                    const Divider(height: 25, thickness: 2),
 
                     DropdownButtonFormField<String>(
                       value: donorType,
@@ -107,20 +145,13 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                       items: ['Restaurant', 'Hotel', 'Event / Wedding', 'Hostel Mess', 'Supermarket', 'Trust / NGO', 'Individual'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => donorType = val!),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 10),
 
                     DropdownButtonFormField<String>(
                       value: surplusFrequency,
                       decoration: InputDecoration(label: _requiredLabel("How often do you have extra food?"), border: const OutlineInputBorder()),
                       items: ['Daily', 'Weekly', 'Occasional / Unpredictable', 'One-time Event'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => surplusFrequency = val!),
-                    ),
-                    const SizedBox(height: 15),
-
-                    TextField(
-                        controller: instructionsController,
-                        maxLines: 2,
-                        decoration: const InputDecoration(labelText: "Pickup Instructions (e.g., 'Come to back door')", border: OutlineInputBorder())
                     ),
 
                     const SizedBox(height: 25),
@@ -129,16 +160,19 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
                         onPressed: () async {
-                          if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty) {
+                          // FORCE THEM TO ENTER STREET
+                          if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty || exactAddressController.text.isEmpty || streetController.text.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields!")));
                             return;
                           }
                           await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
                             'businessName': businessNameController.text.trim(),
                             'primaryContactName': contactNameController.text.trim(),
-                            'contact': phoneController.text.trim(), // SAVING PHONE NUMBER
+                            'contact': phoneController.text.trim(),
+                            'exactAddress': exactAddressController.text.trim(),
+                            'streetName': streetController.text.trim(), // SAVING STREET
                             'landmark': landmarkController.text.trim(),
-                            'pickupInstructions': instructionsController.text.trim(),
+                            'pickupInstructions': selectedPickup,
                             'donorType': donorType,
                             'surplusFrequency': surplusFrequency,
                           });
@@ -185,7 +219,7 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
         ),
         const SizedBox(height: 20),
         Text(widget.userData['businessName'] ?? 'Donor', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)), // SHOWING IT
+        Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)),
         const SizedBox(height: 30),
         Card(
           elevation: 2,
@@ -194,7 +228,12 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
             children: [
               ListTile(leading: const Icon(Icons.category, color: Colors.blue), title: const Text("Type"), trailing: Text(widget.userData['donorType'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold))),
               const Divider(height: 0),
-              ListTile(leading: const Icon(Icons.repeat, color: Colors.green), title: const Text("Frequency"), trailing: Text(widget.userData['surplusFrequency'] ?? 'Occasional', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              // SHOWING THE NEW STITCHED ADDRESS
+              ListTile(
+                  leading: const Icon(Icons.home, color: Colors.orange),
+                  title: const Text("Location"),
+                  subtitle: Text("${widget.userData['exactAddress'] ?? 'Building'}\n${widget.userData['streetName'] ?? 'Street'}", style: const TextStyle(fontWeight: FontWeight.bold))
+              ),
             ],
           ),
         ),

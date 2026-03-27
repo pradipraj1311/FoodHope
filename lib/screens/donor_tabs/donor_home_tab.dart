@@ -90,9 +90,11 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
 
     String foodCategory = 'Cooked Meal';
     String foodType = 'Veg Only';
-    String cuisineType = 'Mixed / Any';
     String prepTime = 'Just Cooked (Hot)';
     String selectedExpiry = 'Within 2 Hours';
+
+    // NEW: PICKUP INSTRUCTIONS DROPDOWN
+    String selectedPickup = 'Hand to front desk / reception';
 
     showModalBottomSheet(
         context: context,
@@ -149,14 +151,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                         const SizedBox(height: 15),
 
                         DropdownButtonFormField<String>(
-                          value: cuisineType,
-                          decoration: const InputDecoration(labelText: "Cuisine Type (Optional)", border: OutlineInputBorder()),
-                          items: ['Mixed / Any', 'Indian (General)', 'Jain Food', 'Punjabi', 'South Indian', 'Western / Fast Food'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-                          onChanged: (val) => setModalState(() => cuisineType = val!),
-                        ),
-                        const SizedBox(height: 15),
-
-                        DropdownButtonFormField<String>(
                           value: prepTime,
                           decoration: InputDecoration(label: _requiredLabel("When was it prepared?"), border: const OutlineInputBorder()),
                           items: ['Just Cooked (Hot)', 'Cooked 2-4 hours ago', 'Cooked yesterday (Refrigerated)', 'N/A (Packaged / Raw)'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
@@ -169,6 +163,21 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           decoration: InputDecoration(label: _requiredLabel("Must be picked up..."), border: const OutlineInputBorder()),
                           items: ['Within 1 Hour', 'Within 2 Hours', 'Within 4 Hours', 'By End of Day', 'Valid for days (Packaged)'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                           onChanged: (val) => setModalState(() => selectedExpiry = val!),
+                        ),
+                        const SizedBox(height: 15),
+
+                        // REQUIRED PICKUP DROPDOWN
+                        DropdownButtonFormField<String>(
+                          value: selectedPickup,
+                          decoration: InputDecoration(label: _requiredLabel("Pickup Instructions"), border: const OutlineInputBorder()),
+                          items: [
+                            'Hand to front desk / reception',
+                            'Call upon arrival, I will bring it out',
+                            'Pick up from back door / kitchen',
+                            'Self-pickup from designated counter',
+                            'Other (Call me for details)'
+                          ].map((val) => DropdownMenuItem(value: val, child: Text(val, overflow: TextOverflow.ellipsis))).toList(),
+                          onChanged: (val) => setModalState(() => selectedPickup = val!),
                         ),
                         const SizedBox(height: 25),
 
@@ -190,26 +199,38 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                               else if (selectedExpiry.contains('End of Day')) exactExpiryTime = DateTime(now.year, now.month, now.day, 23, 59, 59);
                               else exactExpiryTime = now.add(const Duration(days: 3));
 
+                              // PERFECT ZOMATO ADDRESS STITCHING MAGIC
+                              String exactBuilding = widget.userData['exactAddress'] ?? '';
+                              String exactStreet = widget.userData['streetName'] ?? ''; // NEW
+                              String landmark = widget.userData['landmark'] ?? '';
+                              String gpsCity = widget.userData['city'] ?? 'Unknown Area';
+
+                              // Creating a highly specific, multi-line address format
+                              String finalDisplayAddress = "";
+                              if (exactBuilding.isNotEmpty) finalDisplayAddress += "$exactBuilding, ";
+                              if (exactStreet.isNotEmpty) finalDisplayAddress += "$exactStreet\n";
+                              if (landmark.isNotEmpty) finalDisplayAddress += "Landmark: $landmark\n";
+                              finalDisplayAddress += gpsCity;
+
                               await FirebaseFirestore.instance.collection('donations').add({
                                 'donorUid': widget.uid,
                                 'businessName': widget.userData['businessName'] ?? 'Local Donor',
-                                // SECURELY FETCHING CONTACT NUMBER
                                 'donorContact': widget.userData['contact'] ?? 'No Number Provided',
                                 'foodItem': foodItemController.text.trim(),
                                 'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
                                 'foodState': foodCategory,
                                 'category': foodType,
-                                'cuisineType': cuisineType,
                                 'prepTime': prepTime,
                                 'expiry': selectedExpiry,
                                 'exactExpiryTime': exactExpiryTime,
                                 'status': 'Available',
                                 'postedAt': now,
                                 'city': widget.userData['city'] ?? 'Unknown',
-                                'shortAddress': widget.userData['shortAddress'] ?? 'Unknown',
-                                'fullAddress': widget.userData['fullAddress'] ?? 'Address not specified',
-                                'landmark': widget.userData['landmark'] ?? '',
-                                'pickupInstructions': widget.userData['pickupInstructions'] ?? '',
+
+                                // SAVING THE FULL STITCHED ADDRESS
+                                'fullAddress': finalDisplayAddress,
+                                'pickupInstructions': selectedPickup,
+
                                 'latitude': widget.userData['latitude'],
                                 'longitude': widget.userData['longitude'],
                               });
@@ -304,8 +325,18 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           const SizedBox(height: 10),
                           Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity']} • ${postData['foodState']}")]),
 
+                          // SHOWING INSTRUCTIONS ON THE ACTIVE POST
                           const SizedBox(height: 8),
-                          // SHOW LIVE TIMER FOR DONOR
+                          Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text("Instruction: ${postData['pickupInstructions'] ?? 'N/A'}", style: TextStyle(fontSize: 13, color: Colors.grey.shade700))),
+                              ]
+                          ),
+
+                          const SizedBox(height: 8),
                           CountdownTimerWidget(expiryTimestamp: postData['exactExpiryTime'] as Timestamp?),
 
                           if (isInTransit) ...[

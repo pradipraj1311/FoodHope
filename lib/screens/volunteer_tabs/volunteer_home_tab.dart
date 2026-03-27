@@ -129,7 +129,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. ACTIVE DELIVERY CARD
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('donations')
               .where('volunteerUid', isEqualTo: widget.uid)
@@ -179,7 +178,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
           },
         ),
 
-        // 2. SEARCH & FILTERS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Column(
@@ -218,7 +216,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
           child: Text("Recommended Rescues", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
         ),
 
-        // 3. FILTERED FEED WITH BEAUTIFUL ADDRESS INFO
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('donations')
@@ -261,8 +258,7 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                   Map<String, dynamic> postData = post.data() as Map<String, dynamic>;
 
                   // Making variables clean and safe
-                  String landmark = postData['landmark'] ?? '';
-                  String instructions = postData['pickupInstructions'] ?? '';
+                  String instructions = postData['pickupInstructions'] ?? 'See front desk';
                   String phone = postData['donorContact'] ?? 'Not Provided';
 
                   return Card(
@@ -297,17 +293,15 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
 
                           const Divider(height: 25),
 
-                          // CRYSTAL CLEAR PICKUP LOCATION BLOCK
                           const Text("📍 Pickup Details:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                           const SizedBox(height: 4),
                           Text("🏢 Business: ${postData['businessName']}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
-                          Text("🗺️ Address: ${postData['fullAddress'] ?? postData['shortAddress'] ?? 'N/A'}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
 
-                          if (landmark.isNotEmpty)
-                            Text("🚩 Landmark: $landmark", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
+                          // SHOWING THE STITCHED ADDRESS
+                          Text("🗺️ Address: ${postData['fullAddress'] ?? 'N/A'}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
 
-                          if (instructions.isNotEmpty)
-                            Text("📝 Instructions: $instructions", style: TextStyle(fontSize: 13, color: Colors.blue.shade700, fontWeight: FontWeight.w500)),
+                          // SHOWING THE NEW DROPDOWN INSTRUCTION
+                          Text("📝 Instruction: $instructions", style: TextStyle(fontSize: 13, color: Colors.blue.shade700, fontWeight: FontWeight.w500)),
 
                           const SizedBox(height: 8),
 

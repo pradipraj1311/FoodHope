@@ -63,8 +63,15 @@ class _DonorDashboardState extends State<DonorDashboard> {
   Widget build(BuildContext context) {
     if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    String displayCity = userData?['city'] ?? 'Unknown Location';
-    String displayFullAddress = userData?['fullAddress'] ?? 'Tap to set your exact location';
+    // EXACT ZOMATO STITCHING
+    String building = userData?['exactAddress'] ?? '';
+    String street = userData?['streetName'] ?? '';
+
+    // If they filled out the profile, show building on top. Otherwise fallback to GPS City.
+    String displayTopLine = building.isNotEmpty ? building : (userData?['city'] ?? 'Unknown Location');
+
+    // If they filled out the profile, show street on bottom. Otherwise fallback to GPS Full Address.
+    String displayBottomLine = street.isNotEmpty ? "$street, ${userData?['city'] ?? ''}" : (userData?['fullAddress'] ?? 'Tap to set your exact location');
 
     final List<Widget> pages = [
       DonorHomeTab(userData: userData!, uid: currentUser!.uid),
@@ -87,13 +94,15 @@ class _DonorDashboardState extends State<DonorDashboard> {
                 children: [
                   Icon(Icons.location_on, size: 22, color: Colors.orange.shade700),
                   const SizedBox(width: 4),
-                  Text(displayCity, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
+                  // BOLD BUILDING NAME
+                  Text(displayTopLine, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
                   const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
                 ],
               ),
               Padding(
                 padding: const EdgeInsets.only(left: 26.0),
-                child: Text(displayFullAddress, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
+                // SUBTLE STREET NAME
+                child: Text(displayBottomLine, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
               ),
             ],
           ),
@@ -120,7 +129,6 @@ class _DonorDashboardState extends State<DonorDashboard> {
   }
 }
 
-// Zomato Search Sheet (Reused for Donor)
 class DonorCitySearchSheet extends StatefulWidget {
   final String currentUserUid;
   final double? userLat;
