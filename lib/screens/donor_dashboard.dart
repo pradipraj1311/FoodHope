@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'login_screen.dart'; // Needed for logout routing
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'dart:convert';
+import 'dart:async';
+import 'package:http/http.dart' as http;
+
+import 'donor_tabs/donor_home_tab.dart';
+import 'donor_tabs/donor_history_tab.dart';
+import 'donor_tabs/donor_profile_tab.dart';
 
 class DonorDashboard extends StatefulWidget {
   const DonorDashboard({super.key});
@@ -12,130 +20,42 @@ class DonorDashboard extends StatefulWidget {
 
 class _DonorDashboardState extends State<DonorDashboard> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
-  Map<String, dynamic>? donorData;
+  Map<String, dynamic>? userData;
   bool isLoading = true;
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetchDonorDetails();
+    _fetchUserDetails();
   }
 
-  // Fetch the donor's details so we can attach their city/name to the food post
-  Future<void> _fetchDonorDetails() async {
+  Future<void> _fetchUserDetails() async {
     if (currentUser != null) {
       DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).get();
       if (mounted) {
         setState(() {
-          donorData = doc.data() as Map<String, dynamic>?;
+          userData = doc.data() as Map<String, dynamic>?;
           isLoading = false;
         });
       }
     }
   }
 
-  // --- LOGOUT LOGIC ---
-  Future<void> _logout() async {
-    await FirebaseAuth.instance.signOut();
-    if (mounted) {
-      // Clears the entire navigation stack and sends them back to the Role Selection/Login
-      Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen(role: 'Donor')),
-              (route) => false
-      );
-    }
-  }
-
-  // --- POST NEW FOOD LOGIC (The Bottom Sheet) ---
-  void _showAddDonationModal() {
-    final TextEditingController foodItemController = TextEditingController();
-    final TextEditingController quantityController = TextEditingController();
-    String selectedCategory = 'Veg Only';
-    String selectedExpiry = 'Within 2 hours';
-
+  void _showCitySearchSheet() {
     showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (context) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-              left: 20, right: 20, top: 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Post a Food Rescue", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 15),
-
-                TextField(
-                  controller: foodItemController,
-                  decoration: const InputDecoration(labelText: "What food is available? (e.g., 50 Rotis & Dal)", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 15),
-
-                TextField(
-                  controller: quantityController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: "Feeds approximately how many people?", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 15),
-
-                DropdownButtonFormField<String>(
-                  value: selectedCategory,
-                  decoration: const InputDecoration(labelText: "Food Category", border: OutlineInputBorder()),
-                  items: ['Veg Only', 'Non-Veg Only', 'Both Veg & Non-Veg'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-                  onChanged: (val) => selectedCategory = val!,
-                ),
-                const SizedBox(height: 15),
-
-                DropdownButtonFormField<String>(
-                  value: selectedExpiry,
-                  decoration: const InputDecoration(labelText: "Must be consumed within...", border: OutlineInputBorder()),
-                  items: ['Within 2 hours', 'Within 4 hours', 'By End of Day', 'By Tomorrow Morning'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-                  onChanged: (val) => selectedExpiry = val!,
-                ),
-                const SizedBox(height: 25),
-
-                SizedBox(
-                  width: double.infinity, height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      if (foodItemController.text.isEmpty || quantityController.text.isEmpty) return;
-
-                      // Save to a new 'donations' collection in the database
-                      await FirebaseFirestore.instance.collection('donations').add({
-                        'donorUid': currentUser!.uid,
-                        'businessName': donorData?['businessName'] ?? 'Unknown Business',
-                        'foodItem': foodItemController.text.trim(),
-                        'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
-                        'category': selectedCategory,
-                        'expiry': selectedExpiry,
-                        'status': 'Available', // Can be: Available, Claimed, Completed
-                        'postedAt': DateTime.now(),
-                        // Crucial for the matching algorithm later!
-                        'city': donorData?['city'] ?? 'Unknown City',
-                        'latitude': donorData?['latitude'],
-                        'longitude': donorData?['longitude'],
-                      });
-
-                      if (mounted) {
-                        Navigator.pop(context); // Close the modal
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Food successfully posted! Volunteers are being notified.")));
-                      }
-                    },
-                    child: const Text("Post Food Alert", style: TextStyle(fontSize: 18)),
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          );
-        }
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => DonorCitySearchSheet(
+        currentUserUid: currentUser!.uid,
+        userLat: userData?['latitude'],
+        userLon: userData?['longitude'],
+        onCitySelected: (String newShortAddress) {
+          _fetchUserDetails();
+        },
+      ),
     );
   }
 
@@ -143,73 +63,215 @@ class _DonorDashboardState extends State<DonorDashboard> {
   Widget build(BuildContext context) {
     if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
+    String displayCity = userData?['city'] ?? 'Unknown Location';
+    String displayFullAddress = userData?['fullAddress'] ?? 'Tap to set your exact location';
+
+    final List<Widget> pages = [
+      DonorHomeTab(userData: userData!, uid: currentUser!.uid),
+      DonorHistoryTab(uid: currentUser!.uid),
+      DonorProfileTab(userData: userData!, uid: currentUser!.uid, onProfileUpdated: _fetchUserDetails),
+    ];
+
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: Text(donorData?['businessName'] ?? "Donor Dashboard"),
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
-        ],
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        title: GestureDetector(
+          onTap: _showCitySearchSheet,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.location_on, size: 22, color: Colors.orange.shade700),
+                  const SizedBox(width: 4),
+                  Text(displayCity, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
+                  const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 26.0),
+                child: Text(displayFullAddress, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
+        ),
       ),
-      // --- REAL-TIME FEED OF THEIR POSTS ---
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('donations')
-            .where('donorUid', isEqualTo: currentUser?.uid) // Only show THEIR posts
-            .orderBy('postedAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("You haven't posted any food yet. Click the + button to start!", textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.grey)));
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(10),
-            itemCount: snapshot.data!.docs.length,
-            itemBuilder: (context, index) {
-              var post = snapshot.data!.docs[index];
-              bool isAvailable = post['status'] == 'Available';
-
-              return Card(
-                elevation: 3,
-                margin: const EdgeInsets.only(bottom: 15),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(15),
-                  title: Text(post['foodItem'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 5),
-                      Text("Feeds: ${post['quantity']} people • ${post['category']}"),
-                      Text("Consume: ${post['expiry']}", style: const TextStyle(color: Colors.redAccent)),
-                      const SizedBox(height: 10),
-                      // Status Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: isAvailable ? Colors.green.shade100 : Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          post['status'],
-                          style: TextStyle(color: isAvailable ? Colors.green.shade800 : Colors.orange.shade800, fontWeight: FontWeight.bold),
-                        ),
-                      )
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+      body: pages[_currentIndex],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) => setState(() => _currentIndex = index),
+          selectedItemColor: Colors.orange.shade700,
+          unselectedItemColor: Colors.grey,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.storefront), label: "Post Food"),
+            BottomNavigationBarItem(icon: Icon(Icons.history), label: "Impact"),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          ],
+        ),
       ),
-      // --- THE BIG POST BUTTON ---
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.green.shade700,
-        foregroundColor: Colors.white,
-        onPressed: _showAddDonationModal,
-        icon: const Icon(Icons.add),
-        label: const Text("Donate Food"),
+    );
+  }
+}
+
+// Zomato Search Sheet (Reused for Donor)
+class DonorCitySearchSheet extends StatefulWidget {
+  final String currentUserUid;
+  final double? userLat;
+  final double? userLon;
+  final Function(String) onCitySelected;
+
+  const DonorCitySearchSheet({super.key, required this.currentUserUid, this.userLat, this.userLon, required this.onCitySelected});
+
+  @override
+  State<DonorCitySearchSheet> createState() => _DonorCitySearchSheetState();
+}
+
+class _DonorCitySearchSheetState extends State<DonorCitySearchSheet> {
+  List<dynamic> searchResults = [];
+  bool isSearching = false;
+  final List<String> hintCities = ['Vadodara', 'Nadiad', 'Ahmedabad', 'Surat', 'Rajkot'];
+  int currentHintIndex = 0;
+  Timer? _hintTimer;
+  Timer? _debounceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _hintTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (mounted) setState(() => currentHintIndex = (currentHintIndex + 1) % hintCities.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _hintTimer?.cancel();
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    if (query.length < 3) {
+      setState(() { searchResults = []; isSearching = false; });
+      return;
+    }
+    setState(() => isSearching = true);
+
+    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        String latLonQuery = (widget.userLat != null && widget.userLon != null) ? "&lat=${widget.userLat}&lon=${widget.userLon}" : "";
+        final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&addressdetails=1&limit=8&countrycodes=in$latLonQuery');
+        final response = await http.get(url, headers: {'User-Agent': 'FoodHopeApp/1.0'});
+        if (response.statusCode == 200) {
+          if (mounted) setState(() => searchResults = json.decode(response.body));
+        }
+      } catch (e) {
+        print("Search Error: $e");
+      } finally {
+        if (mounted) setState(() => isSearching = false);
+      }
+    });
+  }
+
+  Future<void> _useCurrentLocation() async {
+    setState(() => isSearching = true);
+    try {
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      Placemark place = placemarks[0];
+
+      String exactCity = place.locality ?? place.subAdministrativeArea ?? "Unknown City";
+      String shortAddress = "${place.street ?? place.subLocality ?? exactCity}, $exactCity";
+      String fullAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}, ${place.postalCode}";
+      fullAddress = fullAddress.replaceAll(RegExp(r'null, | ,'), '').trim();
+
+      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
+        'latitude': position.latitude, 'longitude': position.longitude, 'city': exactCity,
+        'shortAddress': shortAddress, 'fullAddress': fullAddress,
+      });
+
+      widget.onCitySelected(shortAddress);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location updated!")));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not fetch Location.")));
+    } finally {
+      if (mounted) setState(() => isSearching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 40),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.85,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Select Business Location", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
+            TextField(
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: "Search '${hintCities[currentHintIndex]}'...",
+                prefixIcon: const Icon(Icons.search, color: Colors.orange),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                filled: true,
+                fillColor: Colors.grey.shade200,
+              ),
+              onChanged: _onSearchChanged,
+            ),
+            const SizedBox(height: 15),
+            ListTile(
+              contentPadding: EdgeInsets.zero, leading: const Icon(Icons.my_location, color: Colors.red),
+              title: const Text("Use current location", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+              onTap: _useCurrentLocation,
+            ),
+            const Divider(thickness: 1),
+            if (isSearching) const Center(child: CircularProgressIndicator(color: Colors.orange)),
+            Expanded(
+              child: ListView.builder(
+                itemCount: searchResults.length,
+                itemBuilder: (context, index) {
+                  var place = searchResults[index];
+                  String displayName = place['display_name'] ?? '';
+                  String exactCity = place['address']?['city'] ?? place['address']?['town'] ?? place['address']?['county'] ?? 'Unknown';
+                  List<String> addressParts = displayName.split(', ');
+                  String primaryText = addressParts.isNotEmpty ? addressParts[0] : exactCity;
+                  String secondaryText = addressParts.length > 1 ? addressParts.sublist(1).join(', ') : displayName;
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero, leading: const Icon(Icons.location_on_outlined, color: Colors.grey),
+                    title: Text(primaryText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(secondaryText, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                    onTap: () async {
+                      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
+                        'city': exactCity, 'shortAddress': "$primaryText, $exactCity", 'fullAddress': displayName,
+                        'latitude': double.parse(place['lat']), 'longitude': double.parse(place['lon']),
+                      });
+                      widget.onCitySelected(primaryText);
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location saved!")));
+                      }
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
