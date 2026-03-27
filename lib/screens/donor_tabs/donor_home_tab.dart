@@ -16,7 +16,7 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
   Widget _requiredLabel(String text) {
     return Text.rich(
       TextSpan(
-        text: text, style: TextStyle(color: Colors.grey.shade700, fontSize: 16),
+        text: text, style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
         children: const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))],
       ),
     );
@@ -25,12 +25,18 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
   void _showPostFoodSheet() {
     TextEditingController foodItemController = TextEditingController();
     TextEditingController quantityController = TextEditingController();
-    String selectedCategory = 'Veg Only';
+
+    // Rich Data Variables
+    String foodCategory = 'Cooked Meal';
+    String foodType = 'Veg Only';
+    String cuisineType = 'Mixed / Any';
+    String prepTime = 'Just Cooked (Hot)';
     String selectedExpiry = 'Within 2 Hours';
 
     showModalBottomSheet(
         context: context,
         isScrollControlled: true,
+        backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
         builder: (context) {
           return StatefulBuilder(
@@ -47,7 +53,7 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
 
                         TextField(
                           controller: foodItemController,
-                          decoration: InputDecoration(label: _requiredLabel("Food Description (e.g., 50 Rotis, Rice)"), border: const OutlineInputBorder()),
+                          decoration: InputDecoration(label: _requiredLabel("What food is available? (e.g., 50 Rotis)"), border: const OutlineInputBorder()),
                         ),
                         const SizedBox(height: 15),
 
@@ -58,18 +64,50 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                         ),
                         const SizedBox(height: 15),
 
+                        // Category & Type
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: foodCategory,
+                                decoration: InputDecoration(label: _requiredLabel("Food State"), border: const OutlineInputBorder()),
+                                items: ['Cooked Meal', 'Packaged Food', 'Raw Ingredients', 'Bakery / Sweets'].map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontSize: 13)))).toList(),
+                                onChanged: (val) => setModalState(() => foodCategory = val!),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: foodType,
+                                decoration: InputDecoration(label: _requiredLabel("Dietary"), border: const OutlineInputBorder()),
+                                items: ['Veg Only', 'Non-Veg', 'Both (Mixed)'].map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontSize: 13)))).toList(),
+                                onChanged: (val) => setModalState(() => foodType = val!),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 15),
+
                         DropdownButtonFormField<String>(
-                          value: selectedCategory,
-                          decoration: InputDecoration(label: _requiredLabel("Food Category"), border: const OutlineInputBorder()),
-                          items: ['Veg Only', 'Non-Veg', 'Both Veg & Non-Veg', 'Packaged Snacks'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-                          onChanged: (val) => setModalState(() => selectedCategory = val!),
+                          value: cuisineType,
+                          decoration: const InputDecoration(labelText: "Cuisine Type (Optional)", border: OutlineInputBorder()),
+                          items: ['Mixed / Any', 'Indian (General)', 'Jain Food', 'Punjabi', 'South Indian', 'Western / Fast Food'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                          onChanged: (val) => setModalState(() => cuisineType = val!),
+                        ),
+                        const SizedBox(height: 15),
+
+                        DropdownButtonFormField<String>(
+                          value: prepTime,
+                          decoration: InputDecoration(label: _requiredLabel("When was it prepared?"), border: const OutlineInputBorder()),
+                          items: ['Just Cooked (Hot)', 'Cooked 2-4 hours ago', 'Cooked yesterday (Refrigerated)', 'N/A (Packaged / Raw)'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                          onChanged: (val) => setModalState(() => prepTime = val!),
                         ),
                         const SizedBox(height: 15),
 
                         DropdownButtonFormField<String>(
                           value: selectedExpiry,
                           decoration: InputDecoration(label: _requiredLabel("Must be picked up..."), border: const OutlineInputBorder()),
-                          items: ['Within 1 Hour', 'Within 2 Hours', 'Within 4 Hours', 'By End of Day'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                          items: ['Within 1 Hour', 'Within 2 Hours', 'Within 4 Hours', 'By End of Day', 'Valid for days (Packaged)'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                           onChanged: (val) => setModalState(() => selectedExpiry = val!),
                         ),
                         const SizedBox(height: 25),
@@ -84,20 +122,30 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                                 return;
                               }
 
-                              // CRITICAL: We attach the Donor's exact location to the food so Volunteers can find it!
                               await FirebaseFirestore.instance.collection('donations').add({
                                 'donorUid': widget.uid,
                                 'businessName': widget.userData['businessName'] ?? 'Local Donor',
                                 'foodItem': foodItemController.text.trim(),
                                 'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
-                                'category': selectedCategory,
+                                'foodState': foodCategory,
+                                'category': foodType,
+                                'cuisineType': cuisineType,
+                                'prepTime': prepTime,
                                 'expiry': selectedExpiry,
                                 'status': 'Available',
                                 'postedAt': DateTime.now(),
                                 'city': widget.userData['city'] ?? 'Unknown',
                                 'shortAddress': widget.userData['shortAddress'] ?? 'Unknown',
+                                'fullAddress': widget.userData['fullAddress'] ?? '',
+                                'landmark': widget.userData['landmark'] ?? '',
+                                'pickupInstructions': widget.userData['pickupInstructions'] ?? '',
                                 'latitude': widget.userData['latitude'],
                                 'longitude': widget.userData['longitude'],
+                              });
+
+                              // ML Baseline update
+                              await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+                                'totalDonationsMade': FieldValue.increment(1)
                               });
 
                               if (mounted) {
@@ -184,7 +232,7 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity']}")]),
+                          Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity']} • ${postData['foodState']}")]),
                           if (isInTransit) ...[
                             const SizedBox(height: 5),
                             Row(children: [const Icon(Icons.motorcycle, size: 16, color: Colors.blue), const SizedBox(width: 8), Text("Driver: ${postData['volunteerName']}", style: const TextStyle(fontWeight: FontWeight.bold))]),
@@ -193,8 +241,11 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
-                              onPressed: () {
-                                FirebaseFirestore.instance.collection('donations').doc(post.id).delete();
+                              onPressed: () async {
+                                await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+                                  'cancellationCount': FieldValue.increment(1)
+                                });
+                                await FirebaseFirestore.instance.collection('donations').doc(post.id).delete();
                               },
                               style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                               child: const Text("Cancel Donation"),

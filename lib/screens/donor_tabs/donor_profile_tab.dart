@@ -59,44 +59,59 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
   void _showEditProfileSheet() {
     TextEditingController businessNameController = TextEditingController(text: widget.userData['businessName']);
     TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName']);
+    TextEditingController landmarkController = TextEditingController(text: widget.userData['landmark'] ?? '');
+    TextEditingController instructionsController = TextEditingController(text: widget.userData['pickupInstructions'] ?? '');
 
     String donorType = widget.userData['donorType'] ?? 'Restaurant';
-    bool hasCert = widget.userData['hasFoodSafetyCert'] ?? false;
+    String surplusFrequency = widget.userData['surplusFrequency'] ?? 'Occasional / Unpredictable';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Padding(
+              // THIS PADDING FIXES THE RED SCREEN ERROR
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-              child: SingleChildScrollView(
+              child: SingleChildScrollView( // THIS SCROLL VIEW FIXES THE RED SCREEN ERROR
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text("Edit Business Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 15),
 
-                    TextField(controller: businessNameController, decoration: InputDecoration(label: _requiredLabel("Business/Restaurant Name"), border: const OutlineInputBorder())),
+                    TextField(controller: businessNameController, decoration: InputDecoration(label: _requiredLabel("Business/Entity Name"), border: const OutlineInputBorder())),
                     const SizedBox(height: 15),
 
                     TextField(controller: contactNameController, decoration: InputDecoration(label: _requiredLabel("Primary Contact Name"), border: const OutlineInputBorder())),
                     const SizedBox(height: 15),
 
+                    TextField(controller: landmarkController, decoration: const InputDecoration(labelText: "Nearby Landmark (Optional)", border: OutlineInputBorder())),
+                    const SizedBox(height: 15),
+
                     DropdownButtonFormField<String>(
                       value: donorType,
                       decoration: InputDecoration(label: _requiredLabel("Business Type"), border: const OutlineInputBorder()),
-                      items: ['Restaurant', 'Caterer', 'Hotel', 'Supermarket', 'Individual'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      items: ['Restaurant', 'Hotel', 'Event / Wedding', 'Hostel Mess', 'Supermarket', 'Trust / NGO', 'Individual'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => donorType = val!),
                     ),
                     const SizedBox(height: 15),
 
-                    SwitchListTile(
-                      title: const Text("FSSAI / Food Safety Certified?"),
-                      value: hasCert,
-                      onChanged: (val) => setModalState(() => hasCert = val),
+                    DropdownButtonFormField<String>(
+                      value: surplusFrequency,
+                      decoration: InputDecoration(label: _requiredLabel("How often do you have extra food?"), border: const OutlineInputBorder()),
+                      items: ['Daily', 'Weekly', 'Occasional / Unpredictable', 'One-time Event'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      onChanged: (val) => setModalState(() => surplusFrequency = val!),
+                    ),
+                    const SizedBox(height: 15),
+
+                    TextField(
+                        controller: instructionsController,
+                        maxLines: 2,
+                        decoration: const InputDecoration(labelText: "Pickup Instructions (e.g., 'Come to back door')", border: OutlineInputBorder())
                     ),
 
                     const SizedBox(height: 25),
@@ -105,12 +120,22 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
                         onPressed: () async {
-                          if (businessNameController.text.isEmpty || contactNameController.text.isEmpty) return;
+                          if (businessNameController.text.isEmpty || contactNameController.text.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields!")));
+                            return;
+                          }
                           await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
                             'businessName': businessNameController.text.trim(),
                             'primaryContactName': contactNameController.text.trim(),
+                            'landmark': landmarkController.text.trim(),
+                            'pickupInstructions': instructionsController.text.trim(),
                             'donorType': donorType,
-                            'hasFoodSafetyCert': hasCert,
+                            'surplusFrequency': surplusFrequency,
+
+                            // ML ALGORITHM BASELINES (Hidden from UI, visible to DB)
+                            'totalDonationsMade': widget.userData['totalDonationsMade'] ?? 0,
+                            'cancellationCount': widget.userData['cancellationCount'] ?? 0,
+                            'averageRating': widget.userData['averageRating'] ?? 5.0,
                           });
                           widget.onProfileUpdated();
                           if (mounted) Navigator.pop(context);
@@ -164,7 +189,7 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
             children: [
               ListTile(leading: const Icon(Icons.category, color: Colors.blue), title: const Text("Type"), trailing: Text(widget.userData['donorType'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold))),
               const Divider(height: 0),
-              ListTile(leading: const Icon(Icons.verified, color: Colors.green), title: const Text("Safety Certified"), trailing: Text((widget.userData['hasFoodSafetyCert'] == true) ? "Yes" : "No", style: const TextStyle(fontWeight: FontWeight.bold))),
+              ListTile(leading: const Icon(Icons.repeat, color: Colors.green), title: const Text("Frequency"), trailing: Text(widget.userData['surplusFrequency'] ?? 'Occasional', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
             ],
           ),
         ),
