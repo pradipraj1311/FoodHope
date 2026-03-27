@@ -1,5 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+
+// LIVE TIMER WIDGET (For Donor Side)
+class CountdownTimerWidget extends StatefulWidget {
+  final Timestamp? expiryTimestamp;
+  const CountdownTimerWidget({super.key, this.expiryTimestamp});
+
+  @override
+  State<CountdownTimerWidget> createState() => _CountdownTimerWidgetState();
+}
+
+class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
+  Timer? _timer;
+  String timeLeft = "Calculating...";
+  bool isExpired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTime();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) _updateTime();
+    });
+  }
+
+  void _updateTime() {
+    if (widget.expiryTimestamp == null) {
+      setState(() => timeLeft = "No exact expiry set (Old Post)");
+      return;
+    }
+
+    DateTime expiryTime = widget.expiryTimestamp!.toDate();
+    Duration diff = expiryTime.difference(DateTime.now());
+
+    if (diff.isNegative) {
+      setState(() { timeLeft = "EXPIRED"; isExpired = true; });
+      _timer?.cancel();
+    } else {
+      String hours = diff.inHours.toString().padLeft(2, '0');
+      String minutes = (diff.inMinutes % 60).toString().padLeft(2, '0');
+      String seconds = (diff.inSeconds % 60).toString().padLeft(2, '0');
+      setState(() => timeLeft = "$hours:$minutes:$seconds left");
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.timer, size: 16, color: isExpired ? Colors.red : Colors.orange.shade800),
+        const SizedBox(width: 6),
+        Text(timeLeft, style: TextStyle(color: isExpired ? Colors.red : Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 13)),
+      ],
+    );
+  }
+}
 
 class DonorHomeTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -26,7 +88,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
     TextEditingController foodItemController = TextEditingController();
     TextEditingController quantityController = TextEditingController();
 
-    // Rich Data Variables
     String foodCategory = 'Cooked Meal';
     String foodType = 'Veg Only';
     String cuisineType = 'Mixed / Any';
@@ -64,7 +125,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                         ),
                         const SizedBox(height: 15),
 
-                        // Category & Type
                         Row(
                           children: [
                             Expanded(
@@ -122,9 +182,19 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                                 return;
                               }
 
+                              DateTime now = DateTime.now();
+                              DateTime exactExpiryTime = now;
+                              if (selectedExpiry.contains('1 Hour')) exactExpiryTime = now.add(const Duration(hours: 1));
+                              else if (selectedExpiry.contains('2 Hours')) exactExpiryTime = now.add(const Duration(hours: 2));
+                              else if (selectedExpiry.contains('4 Hours')) exactExpiryTime = now.add(const Duration(hours: 4));
+                              else if (selectedExpiry.contains('End of Day')) exactExpiryTime = DateTime(now.year, now.month, now.day, 23, 59, 59);
+                              else exactExpiryTime = now.add(const Duration(days: 3));
+
                               await FirebaseFirestore.instance.collection('donations').add({
                                 'donorUid': widget.uid,
                                 'businessName': widget.userData['businessName'] ?? 'Local Donor',
+                                // SECURELY FETCHING CONTACT NUMBER
+                                'donorContact': widget.userData['contact'] ?? 'No Number Provided',
                                 'foodItem': foodItemController.text.trim(),
                                 'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
                                 'foodState': foodCategory,
@@ -132,18 +202,18 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                                 'cuisineType': cuisineType,
                                 'prepTime': prepTime,
                                 'expiry': selectedExpiry,
+                                'exactExpiryTime': exactExpiryTime,
                                 'status': 'Available',
-                                'postedAt': DateTime.now(),
+                                'postedAt': now,
                                 'city': widget.userData['city'] ?? 'Unknown',
                                 'shortAddress': widget.userData['shortAddress'] ?? 'Unknown',
-                                'fullAddress': widget.userData['fullAddress'] ?? '',
+                                'fullAddress': widget.userData['fullAddress'] ?? 'Address not specified',
                                 'landmark': widget.userData['landmark'] ?? '',
                                 'pickupInstructions': widget.userData['pickupInstructions'] ?? '',
                                 'latitude': widget.userData['latitude'],
                                 'longitude': widget.userData['longitude'],
                               });
 
-                              // ML Baseline update
                               await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
                                 'totalDonationsMade': FieldValue.increment(1)
                               });
@@ -233,6 +303,11 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           ),
                           const SizedBox(height: 10),
                           Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity']} • ${postData['foodState']}")]),
+
+                          const SizedBox(height: 8),
+                          // SHOW LIVE TIMER FOR DONOR
+                          CountdownTimerWidget(expiryTimestamp: postData['exactExpiryTime'] as Timestamp?),
+
                           if (isInTransit) ...[
                             const SizedBox(height: 5),
                             Row(children: [const Icon(Icons.motorcycle, size: 16, color: Colors.blue), const SizedBox(width: 8), Text("Driver: ${postData['volunteerName']}", style: const TextStyle(fontWeight: FontWeight.bold))]),

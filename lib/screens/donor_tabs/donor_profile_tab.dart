@@ -57,8 +57,10 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
   }
 
   void _showEditProfileSheet() {
-    TextEditingController businessNameController = TextEditingController(text: widget.userData['businessName']);
-    TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName']);
+    TextEditingController businessNameController = TextEditingController(text: widget.userData['businessName'] ?? '');
+    TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName'] ?? '');
+    // NEW: ADDED PHONE NUMBER CONTROLLER
+    TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
     TextEditingController landmarkController = TextEditingController(text: widget.userData['landmark'] ?? '');
     TextEditingController instructionsController = TextEditingController(text: widget.userData['pickupInstructions'] ?? '');
 
@@ -74,9 +76,8 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Padding(
-              // THIS PADDING FIXES THE RED SCREEN ERROR
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-              child: SingleChildScrollView( // THIS SCROLL VIEW FIXES THE RED SCREEN ERROR
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -87,6 +88,14 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                     const SizedBox(height: 15),
 
                     TextField(controller: contactNameController, decoration: InputDecoration(label: _requiredLabel("Primary Contact Name"), border: const OutlineInputBorder())),
+                    const SizedBox(height: 15),
+
+                    // NEW: ADDED PHONE NUMBER TO UI
+                    TextField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(label: _requiredLabel("Phone Number (For Volunteers)"), border: const OutlineInputBorder())
+                    ),
                     const SizedBox(height: 15),
 
                     TextField(controller: landmarkController, decoration: const InputDecoration(labelText: "Nearby Landmark (Optional)", border: OutlineInputBorder())),
@@ -120,22 +129,18 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
                         onPressed: () async {
-                          if (businessNameController.text.isEmpty || contactNameController.text.isEmpty) {
+                          if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields!")));
                             return;
                           }
                           await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
                             'businessName': businessNameController.text.trim(),
                             'primaryContactName': contactNameController.text.trim(),
+                            'contact': phoneController.text.trim(), // SAVING PHONE NUMBER
                             'landmark': landmarkController.text.trim(),
                             'pickupInstructions': instructionsController.text.trim(),
                             'donorType': donorType,
                             'surplusFrequency': surplusFrequency,
-
-                            // ML ALGORITHM BASELINES (Hidden from UI, visible to DB)
-                            'totalDonationsMade': widget.userData['totalDonationsMade'] ?? 0,
-                            'cancellationCount': widget.userData['cancellationCount'] ?? 0,
-                            'averageRating': widget.userData['averageRating'] ?? 5.0,
                           });
                           widget.onProfileUpdated();
                           if (mounted) Navigator.pop(context);
@@ -180,7 +185,7 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
         ),
         const SizedBox(height: 20),
         Text(widget.userData['businessName'] ?? 'Donor', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text(widget.userData['primaryContactName'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 16)),
+        Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)), // SHOWING IT
         const SizedBox(height: 30),
         Card(
           elevation: 2,

@@ -1,5 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+
+class CountdownTimerWidget extends StatefulWidget {
+  final Timestamp? expiryTimestamp;
+  const CountdownTimerWidget({super.key, this.expiryTimestamp});
+
+  @override
+  State<CountdownTimerWidget> createState() => _CountdownTimerWidgetState();
+}
+
+class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
+  Timer? _timer;
+  String timeLeft = "Calculating...";
+  bool isExpired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTime();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) _updateTime();
+    });
+  }
+
+  void _updateTime() {
+    if (widget.expiryTimestamp == null) {
+      setState(() => timeLeft = "No expiry set (Old post)");
+      return;
+    }
+
+    DateTime expiryTime = widget.expiryTimestamp!.toDate();
+    Duration diff = expiryTime.difference(DateTime.now());
+
+    if (diff.isNegative) {
+      setState(() {
+        timeLeft = "EXPIRED";
+        isExpired = true;
+      });
+      _timer?.cancel();
+    } else {
+      String hours = diff.inHours.toString().padLeft(2, '0');
+      String minutes = (diff.inMinutes % 60).toString().padLeft(2, '0');
+      String seconds = (diff.inSeconds % 60).toString().padLeft(2, '0');
+      setState(() => timeLeft = "$hours:$minutes:$seconds left");
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.timer, size: 18, color: isExpired ? Colors.red : Colors.orange.shade800),
+        const SizedBox(width: 8),
+        Text(timeLeft, style: TextStyle(color: isExpired ? Colors.red : Colors.orange.shade800, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+}
 
 class VolunteerHomeTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -65,9 +129,7 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ==========================================
-        // 1. ACTIVE DELIVERY CARD (Sticky at top)
-        // ==========================================
+        // 1. ACTIVE DELIVERY CARD
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('donations')
               .where('volunteerUid', isEqualTo: widget.uid)
@@ -99,7 +161,9 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                   const Divider(color: Colors.white54, height: 25),
                   Text("📦 ${postData['foodItem']}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 10),
-                  Text("📍 Pickup: ${postData['businessName']}", style: const TextStyle(fontSize: 16, color: Colors.white)),
+                  Text("📍 Address: ${postData['fullAddress'] ?? postData['businessName']}", style: const TextStyle(fontSize: 14, color: Colors.white)),
+                  const SizedBox(height: 5),
+                  Text("📞 Contact: ${postData['donorContact'] ?? 'Not provided'}", style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity, height: 50,
@@ -115,14 +179,11 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
           },
         ),
 
-        // ==========================================
-        // 2. SWIGGY STYLE SEARCH & FILTERS
-        // ==========================================
+        // 2. SEARCH & FILTERS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Column(
             children: [
-              // Search Bar
               TextField(
                 decoration: InputDecoration(
                   hintText: "Search for food (e.g., 'Roti', 'Cake')",
@@ -136,8 +197,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                 onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
               ),
               const SizedBox(height: 12),
-
-              // Filter Chips
               SizedBox(
                 height: 40,
                 child: ListView(
@@ -159,9 +218,7 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
           child: Text("Recommended Rescues", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
         ),
 
-        // ==========================================
-        // 3. FILTERED FEED
-        // ==========================================
+        // 3. FILTERED FEED WITH BEAUTIFUL ADDRESS INFO
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('donations')
@@ -172,22 +229,21 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No available food in this area.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 16)));
 
-              // Apply Client-Side Filtering
               var filteredDocs = snapshot.data!.docs.where((doc) {
                 var data = doc.data() as Map<String, dynamic>;
 
-                // 1. Search Query Filter
                 if (_searchQuery.isNotEmpty) {
                   String foodItem = (data['foodItem'] ?? '').toString().toLowerCase();
                   if (!foodItem.contains(_searchQuery)) return false;
                 }
 
-                // 2. Chip Filters
                 if (_selectedFilter == "Veg Only" && data['category'] != "Veg Only") return false;
                 if (_selectedFilter == "Large Qty (>50)" && (data['quantity'] ?? 0) < 50) return false;
                 if (_selectedFilter == "Expiring Soon") {
-                  String expiry = data['expiry'] ?? '';
-                  if (!expiry.contains('2 hours') && !expiry.contains('1 hour')) return false;
+                  if (data['exactExpiryTime'] == null) return false;
+                  Timestamp expiry = data['exactExpiryTime'] as Timestamp;
+                  Duration diff = expiry.toDate().difference(DateTime.now());
+                  if (diff.inMinutes > 60 || diff.isNegative) return false;
                 }
 
                 return true;
@@ -203,6 +259,11 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                 itemBuilder: (context, index) {
                   var post = filteredDocs[index];
                   Map<String, dynamic> postData = post.data() as Map<String, dynamic>;
+
+                  // Making variables clean and safe
+                  String landmark = postData['landmark'] ?? '';
+                  String instructions = postData['pickupInstructions'] ?? '';
+                  String phone = postData['donorContact'] ?? 'Not Provided';
 
                   return Card(
                     elevation: 2,
@@ -230,13 +291,38 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                             children: [
                               const Icon(Icons.people, size: 16, color: Colors.blue),
                               const SizedBox(width: 4),
-                              Text("Feeds approx ${postData['quantity']}", style: const TextStyle(fontWeight: FontWeight.w600)),
+                              Text("Feeds approx ${postData['quantity']} • ${postData['foodState'] ?? ''}", style: const TextStyle(fontWeight: FontWeight.w600)),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Row(children: [const Icon(Icons.storefront, size: 18, color: Colors.grey), const SizedBox(width: 8), Expanded(child: Text(postData['businessName'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)))]),
-                          const SizedBox(height: 5),
-                          Row(children: [const Icon(Icons.timer, size: 18, color: Colors.redAccent), const SizedBox(width: 8), Text("Expires: ${postData['expiry'] ?? 'Soon'}", style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))]),
+
+                          const Divider(height: 25),
+
+                          // CRYSTAL CLEAR PICKUP LOCATION BLOCK
+                          const Text("📍 Pickup Details:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                          const SizedBox(height: 4),
+                          Text("🏢 Business: ${postData['businessName']}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
+                          Text("🗺️ Address: ${postData['fullAddress'] ?? postData['shortAddress'] ?? 'N/A'}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
+
+                          if (landmark.isNotEmpty)
+                            Text("🚩 Landmark: $landmark", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
+
+                          if (instructions.isNotEmpty)
+                            Text("📝 Instructions: $instructions", style: TextStyle(fontSize: 13, color: Colors.blue.shade700, fontWeight: FontWeight.w500)),
+
+                          const SizedBox(height: 8),
+
+                          Row(
+                              children: [
+                                const Icon(Icons.phone, size: 16, color: Colors.green),
+                                const SizedBox(width: 6),
+                                Text(phone, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              ]
+                          ),
+
+                          const Divider(height: 25),
+
+                          CountdownTimerWidget(expiryTimestamp: postData['exactExpiryTime'] as Timestamp?),
+
                           const SizedBox(height: 15),
                           SizedBox(
                             width: double.infinity, height: 45,
