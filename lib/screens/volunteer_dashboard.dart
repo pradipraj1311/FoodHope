@@ -48,12 +48,22 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => CitySearchSheet(
+      builder: (context) => VolunteerCitySearchSheet(
         currentUserUid: currentUser!.uid,
-        userLat: userData?['latitude'], // Pass coordinates to bias the search!
+        userLat: userData?['latitude'],
         userLon: userData?['longitude'],
-        onCitySelected: (String newShortAddress) {
-          _fetchUserDetails(); // Refresh UI after saving
+        // INSTANT STATE UPDATE
+        onCitySelected: (Map<String, dynamic> newLocationData) {
+          if (mounted) {
+            setState(() {
+              if (userData != null) {
+                userData!['city'] = newLocationData['city'];
+                userData!['shortAddress'] = newLocationData['shortAddress'];
+                userData!['fullAddress'] = newLocationData['fullAddress'];
+              }
+            });
+          }
+          _fetchUserDetails();
         },
       ),
     );
@@ -61,11 +71,12 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
 
-    // ZOMATO STYLE: City bold on top, full address subtle on bottom
-    String displayCity = userData?['city'] ?? 'Unknown Location';
-    String displayFullAddress = userData?['fullAddress'] ?? 'Tap to set your exact location';
+    String building = userData?['exactAddress'] ?? '';
+    String street = userData?['streetName'] ?? '';
+    String displayTopLine = building.isNotEmpty ? building : (userData?['city'] ?? 'Set Exact Location');
+    String displayBottomLine = street.isNotEmpty ? "$street, ${userData?['city'] ?? ''}" : (userData?['fullAddress'] ?? 'Tap to set your exact location');
 
     final List<Widget> pages = [
       VolunteerHomeTab(userData: userData!, uid: currentUser!.uid),
@@ -88,59 +99,51 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                 children: [
                   Icon(Icons.location_on, size: 22, color: Colors.green.shade700),
                   const SizedBox(width: 4),
-                  Text(displayCity, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
+                  Text(displayTopLine, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
                   const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
                 ],
               ),
               Padding(
-                padding: const EdgeInsets.only(left: 26.0), // Aligns exactly under the text
-                child: Text(displayFullAddress, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
+                padding: const EdgeInsets.only(left: 26.0),
+                child: Text(displayBottomLine, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
               ),
             ],
           ),
         ),
       ),
       body: pages[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          selectedItemColor: Colors.green.shade700,
-          unselectedItemColor: Colors.grey,
-          backgroundColor: Colors.white,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Feed"),
-            BottomNavigationBarItem(icon: Icon(Icons.history), label: "History"),
-            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
-          ],
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        selectedItemColor: Colors.green.shade700,
+        unselectedItemColor: Colors.grey,
+        backgroundColor: Colors.white,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.electric_moped), label: "Feed"),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: "History"),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+        ],
       ),
     );
   }
 }
 
-// =========================================================================
-// THE ZOMATO SEARCH WIDGET
-// =========================================================================
-class CitySearchSheet extends StatefulWidget {
+class VolunteerCitySearchSheet extends StatefulWidget {
   final String currentUserUid;
   final double? userLat;
   final double? userLon;
-  final Function(String) onCitySelected;
+  final Function(Map<String, dynamic>) onCitySelected;
 
-  const CitySearchSheet({super.key, required this.currentUserUid, this.userLat, this.userLon, required this.onCitySelected});
+  const VolunteerCitySearchSheet({super.key, required this.currentUserUid, this.userLat, this.userLon, required this.onCitySelected});
 
   @override
-  State<CitySearchSheet> createState() => _CitySearchSheetState();
+  State<VolunteerCitySearchSheet> createState() => _VolunteerCitySearchSheetState();
 }
 
-class _CitySearchSheetState extends State<CitySearchSheet> {
+class _VolunteerCitySearchSheetState extends State<VolunteerCitySearchSheet> {
   List<dynamic> searchResults = [];
   bool isSearching = false;
-
-  final List<String> hintCities = ['Vadodara', 'Nadiad', 'Ahmedabad', 'Surat', 'Rajkot'];
+  final List<String> hintCities = ['Vadodara', 'Nadiad', 'Ahmedabad', 'Surat'];
   int currentHintIndex = 0;
   Timer? _hintTimer;
   Timer? _debounceTimer;
@@ -162,23 +165,17 @@ class _CitySearchSheetState extends State<CitySearchSheet> {
 
   void _onSearchChanged(String query) {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-
     if (query.length < 3) {
       setState(() { searchResults = []; isSearching = false; });
       return;
     }
-
     setState(() => isSearching = true);
 
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
       try {
-        // Appending lat and lon biases the OSM API to look for nearby places first!
-        String latLonQuery = (widget.userLat != null && widget.userLon != null)
-            ? "&lat=${widget.userLat}&lon=${widget.userLon}" : "";
-
+        String latLonQuery = (widget.userLat != null && widget.userLon != null) ? "&lat=${widget.userLat}&lon=${widget.userLon}" : "";
         final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&addressdetails=1&limit=8&countrycodes=in$latLonQuery');
         final response = await http.get(url, headers: {'User-Agent': 'FoodHopeApp/1.0'});
-
         if (response.statusCode == 200) {
           if (mounted) setState(() => searchResults = json.decode(response.body));
         }
@@ -200,19 +197,15 @@ class _CitySearchSheetState extends State<CitySearchSheet> {
       String exactCity = place.locality ?? place.subAdministrativeArea ?? "Unknown City";
       String shortAddress = "${place.street ?? place.subLocality ?? exactCity}, $exactCity";
       String fullAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}, ${place.postalCode}";
-
-      // Clean up string formatting
       fullAddress = fullAddress.replaceAll(RegExp(r'null, | ,'), '').trim();
 
-      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'city': exactCity,
-        'shortAddress': shortAddress,
-        'fullAddress': fullAddress,
-      });
+      Map<String, dynamic> updateData = {
+        'latitude': position.latitude, 'longitude': position.longitude, 'city': exactCity,
+        'shortAddress': shortAddress, 'fullAddress': fullAddress,
+      };
 
-      widget.onCitySelected(shortAddress);
+      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update(updateData);
+      widget.onCitySelected(updateData);
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location updated!")));
@@ -229,14 +222,12 @@ class _CitySearchSheetState extends State<CitySearchSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 40),
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.85, // Makes it tall like Zomato
+        height: MediaQuery.of(context).size.height * 0.85,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Select a location", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text("Select Delivery Region", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
-
-            // Modern Search Field
             TextField(
               autofocus: true,
               decoration: InputDecoration(
@@ -250,18 +241,13 @@ class _CitySearchSheetState extends State<CitySearchSheet> {
               onChanged: _onSearchChanged,
             ),
             const SizedBox(height: 15),
-
-            // "Use Current Location" EXACTLY like the screenshot
             ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.my_location, color: Colors.red),
+              contentPadding: EdgeInsets.zero, leading: const Icon(Icons.my_location, color: Colors.red),
               title: const Text("Use current location", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
               onTap: _useCurrentLocation,
             ),
             const Divider(thickness: 1),
-
             if (isSearching) const Center(child: CircularProgressIndicator(color: Colors.green)),
-
             Expanded(
               child: ListView.builder(
                 itemCount: searchResults.length,
@@ -269,25 +255,22 @@ class _CitySearchSheetState extends State<CitySearchSheet> {
                   var place = searchResults[index];
                   String displayName = place['display_name'] ?? '';
                   String exactCity = place['address']?['city'] ?? place['address']?['town'] ?? place['address']?['county'] ?? 'Unknown';
-
                   List<String> addressParts = displayName.split(', ');
                   String primaryText = addressParts.isNotEmpty ? addressParts[0] : exactCity;
                   String secondaryText = addressParts.length > 1 ? addressParts.sublist(1).join(', ') : displayName;
 
                   return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.location_on_outlined, color: Colors.grey),
+                    contentPadding: EdgeInsets.zero, leading: const Icon(Icons.location_on_outlined, color: Colors.grey),
                     title: Text(primaryText, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(secondaryText, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
                     onTap: () async {
-                      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
-                        'city': exactCity,
-                        'shortAddress': "$primaryText, $exactCity",
-                        'fullAddress': displayName,
-                        'latitude': double.parse(place['lat']),
-                        'longitude': double.parse(place['lon']),
-                      });
-                      widget.onCitySelected(primaryText);
+                      Map<String, dynamic> updateData = {
+                        'city': exactCity, 'shortAddress': "$primaryText, $exactCity", 'fullAddress': displayName,
+                        'latitude': double.parse(place['lat']), 'longitude': double.parse(place['lon']),
+                      };
+
+                      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update(updateData);
+                      widget.onCitySelected(updateData);
                       if (mounted) {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location saved!")));
