@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
-import '../delivery_flow/active_delivery_card.dart'; // IMPORT OUR NEW MODULAR WIDGET
+import '../delivery_flow/active_delivery_card.dart';
+import '../delivery_flow/liveness_verification_screen.dart';
 
-// [Keep the CountdownTimerWidget logic here exactly as it was]
+// ... (Keep CountdownTimerWidget exactly as before)
 class CountdownTimerWidget extends StatefulWidget {
   final Timestamp? expiryTimestamp;
   const CountdownTimerWidget({super.key, this.expiryTimestamp});
@@ -35,12 +36,49 @@ class VolunteerHomeTab extends StatefulWidget {
 class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
   String _searchQuery = ""; String _selectedFilter = "All";
 
-  Future<void> _acceptDelivery(BuildContext context, String donationId) async {
+  Future<void> _acceptDelivery(BuildContext context, String donationId, double vLat, double vLon) async {
     await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
       'status': 'Accepted',
-      'volunteerUid': widget.uid, 'volunteerName': widget.userData['name'] ?? 'Volunteer', 'volunteerContact': widget.userData['contact'] ?? '', 'pickupTime': DateTime.now(),
+      'volunteerUid': widget.uid, 'volunteerName': widget.userData['name'] ?? 'Volunteer', 'volunteerContact': widget.userData['contact'] ?? '',
+      'pickupTime': DateTime.now(), 'volunteerLatitude': vLat, 'volunteerLongitude': vLon,
     });
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Delivery Accepted! Drive to the Donor.")));
+  }
+
+  // PROFILE COMPLETION CHECKER
+  void _handleAcceptAttempt(BuildContext context, String donationId, double vLat, double vLon) {
+    bool isProfileComplete = widget.userData.containsKey('contact') && widget.userData['contact'].toString().isNotEmpty &&
+        widget.userData.containsKey('exactAddress') && widget.userData['exactAddress'].toString().isNotEmpty;
+
+    if (!isProfileComplete) {
+      showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+              title: const Text("Profile Incomplete"),
+              content: const Text("You must complete your profile details (Phone, Building, Street) in the Profile tab before accepting deliveries."),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))]
+          )
+      );
+      return;
+    }
+
+    bool isVerified = widget.userData['isVerifiedVolunteer'] ?? false;
+
+    if (isVerified) {
+      // Skip camera, directly accept
+      _acceptDelivery(context, donationId, vLat, vLon);
+    } else {
+      // Must do camera verification once
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LivenessVerificationScreen(
+            uid: widget.uid,
+            onSuccess: () => _acceptDelivery(context, donationId, vLat, vLon),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildFilterChip(String label, IconData icon) {
@@ -64,7 +102,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // USE THE NEW MODULAR WIDGET!
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('donations').where('volunteerUid', isEqualTo: widget.uid).where('status', whereIn: ['Accepted', 'Picked Up']).snapshots(),
           builder: (context, snapshot) {
@@ -126,7 +163,17 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("📍 Pickup Details:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)), if (vLat != 0.0 && dLat != 0.0) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)), child: Row(children: [Icon(Icons.route, size: 14, color: Colors.grey.shade800), const SizedBox(width: 4), Text("$distStr km away", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]))]),
                           const SizedBox(height: 4), Text("🗺️ Address: ${postData['fullAddress'] ?? 'N/A'}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
                           const SizedBox(height: 8), CountdownTimerWidget(expiryTimestamp: postData['exactExpiryTime'] as Timestamp?), const SizedBox(height: 15),
-                          SizedBox(width: double.infinity, height: 45, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () => _acceptDelivery(context, post.id), icon: const Icon(Icons.motorcycle), label: const Text("Accept Delivery", style: TextStyle(fontSize: 16))))
+
+                          // WIRED UP NEW HANDLER
+                          SizedBox(
+                              width: double.infinity, height: 45,
+                              child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                                  onPressed: () => _handleAcceptAttempt(context, post.id, vLat, vLon),
+                                  icon: const Icon(Icons.motorcycle),
+                                  label: const Text("Accept Delivery", style: TextStyle(fontSize: 16))
+                              )
+                          )
                         ],
                       ),
                     ),

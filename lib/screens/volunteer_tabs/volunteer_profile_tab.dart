@@ -63,7 +63,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     TextEditingController nameController = TextEditingController(text: widget.userData['name']);
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact']);
 
-    // NEW: EXACT LOCATION CONTROLLERS
+    // EXACT LOCATION CONTROLLERS
     TextEditingController exactAddressController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
     TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
     TextEditingController landmarkController = TextEditingController(text: widget.userData['landmark'] ?? '');
@@ -72,17 +72,31 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     String currentAgeStr = widget.userData['age']?.toString() ?? '18';
     String selectedAge = ageOptions.contains(currentAgeStr) && currentAgeStr != '0' ? currentAgeStr : '18';
 
-    String selectedGender = widget.userData['gender'] ?? 'Male';
-    String selectedFood = widget.userData['foodPreference'] ?? 'Any Food (Veg & Non-Veg)';
-    String selectedStorage = widget.userData['storageCapacity'] ?? 'Backpack / Small Bag';
+    List<String> genderOptions = ['Male', 'Female', 'Other'];
+    String selectedGender = widget.userData['gender'] ?? genderOptions[0];
+    if (!genderOptions.contains(selectedGender)) selectedGender = genderOptions[0];
 
-    String selectedRange = widget.userData['travelRange'] ?? 'Up to 5 km';
+    List<String> foodOptions = ['Any Food (Veg & Non-Veg)', 'Veg Only', 'Non-Veg Only'];
+    String selectedFood = widget.userData['foodPreference'] ?? foodOptions[0];
+    if (!foodOptions.contains(selectedFood)) selectedFood = foodOptions[0];
+
+    List<String> storageOptions = ['Backpack / Small Bag', 'Bike Box / Large Bag', 'Car Trunk', 'Large Van'];
+    String selectedStorage = widget.userData['storageCapacity'] ?? storageOptions[0];
+    if (!storageOptions.contains(selectedStorage)) selectedStorage = storageOptions[0];
+
     List<String> rangeOptions = ['Up to 3 km', 'Up to 5 km', 'Up to 10 km', 'Up to 20 km', 'Up to 30 km', 'Anywhere in City'];
-    if (!rangeOptions.contains(selectedRange)) selectedRange = 'Up to 5 km';
+    String selectedRange = widget.userData['travelRange'] ?? rangeOptions[1];
+    if (!rangeOptions.contains(selectedRange)) selectedRange = rangeOptions[1];
 
-    String selectedTime = widget.userData['bestTime'] ?? 'Anytime';
+    List<String> timeOptions = ['Anytime', 'Mornings (8AM - 12PM)', 'Afternoons (12PM - 4PM)', 'Evenings (4PM - 8PM)', 'Night (After 8PM)'];
+    String selectedTime = widget.userData['bestTime'] ?? timeOptions[0];
+    if (!timeOptions.contains(selectedTime)) selectedTime = timeOptions[0];
 
-    bool isAffiliated = widget.userData['isAffiliatedWithNgo'] ?? false;
+    bool isAffiliated = false;
+    if (widget.userData['isAffiliatedWithNgo'] is bool) {
+      isAffiliated = widget.userData['isAffiliatedWithNgo'];
+    }
+
     String initialNgo = widget.userData['affiliatedNgoName'] ?? '';
     if (initialNgo == 'Independent') initialNgo = '';
     TextEditingController ngoController = TextEditingController(text: initialNgo);
@@ -101,7 +115,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text("Edit Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const Text("Edit Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green)),
                     const SizedBox(height: 15),
 
                     TextField(controller: nameController, decoration: InputDecoration(label: _requiredLabel("Full Name"), border: const OutlineInputBorder())),
@@ -122,14 +136,14 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                           child: DropdownButtonFormField<String>(
                             value: selectedGender,
                             decoration: InputDecoration(label: _requiredLabel("Gender"), border: const OutlineInputBorder()),
-                            items: ['Male', 'Female', 'Other'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                            items: genderOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                             onChanged: (val) => setModalState(() => selectedGender = val!),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    TextField(controller: phoneController, decoration: InputDecoration(label: _requiredLabel("Phone/Contact"), border: const OutlineInputBorder())),
+                    TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(label: _requiredLabel("Phone/Contact"), border: const OutlineInputBorder())),
 
                     const Divider(height: 25, thickness: 2),
                     const Text("Exact Location Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
@@ -139,7 +153,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                         controller: exactAddressController,
                         decoration: InputDecoration(
                             label: _requiredLabel("Flat / Building / Hostel Name"),
-                            hintText: "e.g., LS Boys Hostel, L Complex",
+                            hintText: "e.g., L.S. Boys Hostel",
                             border: const OutlineInputBorder()
                         )
                     ),
@@ -149,7 +163,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                         controller: streetController,
                         decoration: InputDecoration(
                             label: _requiredLabel("Street / Road / Area"),
-                            hintText: "e.g., Uttarsanda Road, Piplag",
+                            hintText: "e.g., Uttarsanda Road",
                             border: const OutlineInputBorder()
                         )
                     ),
@@ -164,6 +178,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                       title: const Text("Are you delivering for an NGO?", style: TextStyle(fontWeight: FontWeight.bold)),
                       value: isAffiliated,
                       onChanged: (val) => setModalState(() => isAffiliated = val),
+                      activeColor: Colors.green,
                     ),
                     if (isAffiliated) ...[
                       TextField(controller: ngoController, decoration: InputDecoration(label: _requiredLabel("Enter NGO Name"), border: const OutlineInputBorder())),
@@ -176,7 +191,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                     DropdownButtonFormField<String>(
                       value: selectedFood,
                       decoration: InputDecoration(label: _requiredLabel("Food Accepted"), border: const OutlineInputBorder()),
-                      items: ['Any Food (Veg & Non-Veg)', 'Veg Only', 'Non-Veg Only'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      items: foodOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => selectedFood = val!),
                     ),
                     const SizedBox(height: 10),
@@ -184,7 +199,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                     DropdownButtonFormField<String>(
                       value: selectedStorage,
                       decoration: InputDecoration(label: _requiredLabel("Storage / Transport"), border: const OutlineInputBorder()),
-                      items: ['Backpack / Small Bag', 'Bike Box / Large Bag', 'Car Trunk', 'Large Van'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      items: storageOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => selectedStorage = val!),
                     ),
                     const SizedBox(height: 10),
@@ -200,7 +215,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                     DropdownButtonFormField<String>(
                       value: selectedTime,
                       decoration: InputDecoration(label: _requiredLabel("Best Time to Deliver"), border: const OutlineInputBorder()),
-                      items: ['Anytime', 'Mornings (8AM - 12PM)', 'Afternoons (12PM - 4PM)', 'Evenings (4PM - 8PM)', 'Night (After 8PM)'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      items: timeOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
                       onChanged: (val) => setModalState(() => selectedTime = val!),
                     ),
 
@@ -251,6 +266,12 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
   Widget build(BuildContext context) {
     String profileUrl = widget.userData['profileImageUrl'] ?? '';
 
+    // Stitched Address for UI
+    String exactAddress = widget.userData['exactAddress'] ?? 'Building Not Set';
+    String streetName = widget.userData['streetName'] ?? 'Street Not Set';
+    String landmark = widget.userData['landmark'] ?? '';
+    String displayLocation = "$exactAddress\n$streetName${landmark.isNotEmpty ? '\nLandmark: $landmark' : ''}";
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -272,8 +293,22 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
           ],
         ),
         const SizedBox(height: 20),
-        Text(widget.userData['name'] ?? 'Volunteer Hero', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text(widget.userData['contact'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 16)),
+
+        Row(
+          children: [
+            Text(widget.userData['name'] ?? 'Volunteer Hero', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(width: 8),
+            // THE VERIFIED VOLUNTEER BADGE
+            if (widget.userData['isVerifiedVolunteer'] == true)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: Colors.green.shade50, border: Border.all(color: Colors.green.shade300), borderRadius: BorderRadius.circular(4)),
+                child: Row(children: [Icon(Icons.verified_user, size: 12, color: Colors.green.shade700), const SizedBox(width: 3), Text("Verified", style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold))]),
+              ),
+          ],
+        ),
+
+        Text(widget.userData['contact'] ?? 'No Phone Number', style: const TextStyle(color: Colors.grey, fontSize: 16)),
 
         if (widget.userData.containsKey('age') && widget.userData.containsKey('gender'))
           Padding(padding: const EdgeInsets.only(top: 8.0), child: Text("${widget.userData['gender']}, ${widget.userData['age']} yrs", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
@@ -288,7 +323,7 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
               ListTile(
                   leading: const Icon(Icons.home, color: Colors.blue),
                   title: const Text("Location Node"),
-                  subtitle: Text("${widget.userData['exactAddress'] ?? 'Building'}\n${widget.userData['streetName'] ?? 'Street'}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
+                  subtitle: Text(displayLocation, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
               ),
               const Divider(height: 0),
               ListTile(leading: const Icon(Icons.group, color: Colors.orange), title: const Text("Affiliation"), trailing: Text((widget.userData['isAffiliatedWithNgo'] == true) ? widget.userData['affiliatedNgoName'] : "Independent", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),

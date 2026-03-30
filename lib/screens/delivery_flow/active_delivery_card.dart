@@ -16,6 +16,12 @@ class ActiveDeliveryCard extends StatefulWidget {
 
 class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
 
+  bool _isFraudulentDelivery(double donorLat, double donorLon, double distLat, double distLon) {
+    double distance = Geolocator.distanceBetween(donorLat, donorLon, distLat, distLon);
+    if (distance < 50.0) { return true; }
+    return false;
+  }
+
   void _showOtpVerification() {
     TextEditingController otpController = TextEditingController();
     showDialog(
@@ -59,7 +65,6 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     );
   }
 
-  // FIXED: High Visibility Badge
   Widget _buildTrustBadge(String type) {
     String label = "Verified"; IconData icon = Icons.verified; Color color = Colors.green.shade700;
     if (type == 'Volunteer Group') { label = "Community Group"; icon = Icons.star; color = Colors.blue.shade700; }
@@ -72,52 +77,65 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     );
   }
 
-  // FIXED: Crash Failsafe & Exact Distance from DONOR
   Future<List<Map<String, dynamic>>> _calculateEligibleDestinations() async {
     int foodQuantity = widget.donationData['quantity'] ?? 0;
-
-    // We calculate the distance from the DONOR'S location, because the volunteer is currently there!
     double startLat = widget.donationData['latitude'] ?? widget.vLat;
     double startLon = widget.donationData['longitude'] ?? widget.vLon;
 
     QuerySnapshot ngoSnapshot = await FirebaseFirestore.instance.collection('users').where('isVerified', isEqualTo: true).get();
-
     List<Map<String, dynamic>> scoredNgos = [];
 
     for (var doc in ngoSnapshot.docs) {
       Map<String, dynamic> ngoData = doc.data() as Map<String, dynamic>;
-
       String capacityStr = ngoData['storageCapacity'] ?? '';
       int maxCapacity = 100;
       if (capacityStr.contains('300')) maxCapacity = 300;
-      if (capacityStr.contains('500+')) maxCapacity = 10000; // Increased massively to prevent capacity drop-offs
-
-      // CRASH FIX: We filter gently. If the food is massive, we still allow the biggest NGOs to show up.
+      if (capacityStr.contains('500+')) maxCapacity = 10000;
       if (foodQuantity > maxCapacity + 50 && maxCapacity < 1000) continue;
 
       double nLat = ngoData['latitude'] ?? 0.0;
       double nLon = ngoData['longitude'] ?? 0.0;
       double distKm = Geolocator.distanceBetween(startLat, startLon, nLat, nLon) / 1000;
 
-      scoredNgos.add({'id': doc.id, 'data': ngoData, 'distKm': distKm, 'matchFactor': distKm});
-    }
-
-    // CRASH SAFEGUARD: If the quantity was so huge that NO NGO matched, we just load them all anyway so the app doesn't break.
-    if (scoredNgos.isEmpty && ngoSnapshot.docs.isNotEmpty) {
-      for (var doc in ngoSnapshot.docs) {
-        Map<String, dynamic> ngoData = doc.data() as Map<String, dynamic>;
-        double nLat = ngoData['latitude'] ?? 0.0; double nLon = ngoData['longitude'] ?? 0.0;
-        double distKm = Geolocator.distanceBetween(startLat, startLon, nLat, nLon) / 1000;
-        scoredNgos.add({'id': doc.id, 'data': ngoData, 'distKm': distKm, 'matchFactor': distKm});
-      }
+      int pastSuccesses = ngoData['totalDeliveriesReceived'] ?? 0;
+      double capacityBonus = (maxCapacity / 100) * 0.2;
+      double reliabilityBonus = (pastSuccesses * 0.1).clamp(0.0, 2.0);
+      double matchFactor = distKm - capacityBonus - reliabilityBonus;
+      scoredNgos.add({'id': doc.id, 'data': ngoData, 'distKm': distKm, 'matchFactor': matchFactor});
     }
 
     scoredNgos.sort((a, b) => (a['matchFactor'] as double).compareTo(b['matchFactor'] as double));
     return scoredNgos;
   }
 
+  // --- NEW: THE IMMEDIATE NOTIFICATION TRIGGER ---
+  Future<void> _confirmSelectedHub(String ngoId, String ngoName, bool isFraud) async {
+    await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
+      'selectedNgoId': ngoId,
+      'selectedNgoName': ngoName,
+      'isFlaggedForFraud': isFraud,
+      // CHANGING STATUS TO 'EN ROUTE' TRIGGERS THE HUB NOTIFICATION
+      'status': 'En Route',
+      'isHubConfirmed': true, // New flag for final handshake logic
+      'hubConfirmedAt': DateTime.now(),
+    });
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hub Confirmed! Please start driving.")));
+  }
+
   void _showOverrideDestinationSelector(List<Map<String, dynamic>> allDestinations, String recommendedId) {
-    String selectedOverrideReason = 'I regularly work with this group';
+    List<String> overrideOptions = [
+      '1. I regularly work with this Distributor',
+      '2. Recommended Distributor is not responding',
+      '3. Recommended Hub is full (no capacity)',
+      '4. This Hub is closer / better route',
+      '5. This Distributor can distribute faster',
+      '6. Food type not accepted by recommended Hub',
+      '7. Personal trust / experience',
+      '8. Other (write manually)'
+    ];
+
+    String selectedOverrideReason = overrideOptions[0];
+    TextEditingController otherReasonController = TextEditingController();
     String? proposedNgoId;
     String? proposedNgoName;
 
@@ -127,7 +145,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
           return StatefulBuilder(
               builder: (BuildContext context, StateSetter setModalState) {
                 return Padding(
-                  padding: const EdgeInsets.all(20.0),
+                  padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
                   child: Column(
                     mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -135,16 +153,27 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                       const SizedBox(height: 15),
                       const Text("Why would you prefer a different location?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                       const SizedBox(height: 5),
+
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         value: selectedOverrideReason, decoration: const InputDecoration(border: OutlineInputBorder()),
-                        items: ['I regularly work with this group', 'They can distribute food faster', 'The other location is unavailable', 'Other'].map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontSize: 13)))).toList(),
+                        items: overrideOptions.map((val) => DropdownMenuItem(value: val, child: Text(val, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)))).toList(),
                         onChanged: (val) => setModalState(() => selectedOverrideReason = val!),
                       ),
+
+                      if (selectedOverrideReason.contains('Other')) ...[
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: otherReasonController,
+                          decoration: const InputDecoration(hintText: "Please specify reason...", border: OutlineInputBorder()),
+                        ),
+                      ],
+
                       const SizedBox(height: 20),
                       const Text("Select New Destination:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                       const SizedBox(height: 5),
                       SizedBox(
-                        height: 250,
+                        height: 200,
                         child: ListView.builder(
                             itemCount: allDestinations.length,
                             itemBuilder: (context, index) {
@@ -154,7 +183,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                               bool isSelected = proposedNgoId == ngo['id'];
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: Text(ngo['data']['distributorName'] ?? ngo['data']['ngoName'] ?? 'NGO', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                title: Text(ngo['data']['distributorName'] ?? ngo['data']['ngoName'] ?? 'Distributor', style: const TextStyle(fontWeight: FontWeight.bold)),
                                 subtitle: Text("${ngo['distKm'].toStringAsFixed(1)} km away"),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -176,11 +205,15 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white),
                           onPressed: () async {
                             if (proposedNgoId == null) return;
+                            String finalReason = selectedOverrideReason.contains('Other')
+                                ? "Other: ${otherReasonController.text.trim()}"
+                                : selectedOverrideReason;
 
                             await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
                               'selectedNgoId': proposedNgoId,
                               'selectedNgoName': proposedNgoName,
-                              'changeReason': selectedOverrideReason,
+                              'changeReason': finalReason,
+                              'isHubConfirmed': false, // Need to re-confirm if changed!
                             });
                             if (mounted) Navigator.pop(context);
                           },
@@ -198,31 +231,34 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
 
   @override
   Widget build(BuildContext context) {
-    bool isPickedUp = widget.donationData['status'] == 'Picked Up';
+    String status = widget.donationData['status'];
+    bool isPickedUp = status == 'Picked Up';
+    bool isEnRoute = status == 'En Route';
 
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: isPickedUp ? [Colors.blue.shade500, Colors.blue.shade800] : [Colors.orange.shade400, Colors.deepOrange.shade600]),
+        gradient: LinearGradient(colors: isPickedUp || isEnRoute ? [Colors.blue.shade500, Colors.blue.shade800] : [Colors.orange.shade400, Colors.deepOrange.shade600]),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: isPickedUp ? Colors.blue.withOpacity(0.4) : Colors.orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: isPickedUp || isEnRoute ? Colors.blue.withOpacity(0.4) : Colors.orange.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(isPickedUp ? Icons.local_shipping : Icons.directions_bike, color: Colors.white, size: 28),
+              Icon(isPickedUp || isEnRoute ? Icons.local_shipping : Icons.directions_bike, color: Colors.white, size: 28),
               const SizedBox(width: 10),
-              Text(isPickedUp ? "GO TO DELIVERY HUB" : "ACTIVE PICKUP", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.2)),
+              Text(isPickedUp || isEnRoute ? "GO TO DELIVERY HUB" : "ACTIVE PICKUP", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.2)),
             ],
           ),
           const Divider(color: Colors.white54, height: 25),
           Text("📦 ${widget.donationData['foodItem']}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
           const SizedBox(height: 10),
 
-          if (!isPickedUp) ...[
+          if (!isPickedUp && !isEnRoute) ...[
+            // Status: Accepted (Waiting for PIN)
             Text("📍 From Donor: ${widget.donationData['fullAddress'] ?? widget.donationData['businessName']}", style: const TextStyle(fontSize: 14, color: Colors.white)),
             const SizedBox(height: 5),
             Text("📝 Note: ${widget.donationData['pickupInstructions'] ?? 'See front desk'}", style: const TextStyle(fontSize: 13, color: Colors.white70)),
@@ -234,34 +270,37 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.deepOrange.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 onPressed: _showOtpVerification,
-                // FIXED COPYWRITING
-                child: const Text("Collect food from Donor & Enter PIN", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                child: const Text("Collect food & Enter PIN", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             )
           ] else ...[
+            // Status: Picked Up or En Route
             FutureBuilder<List<Map<String, dynamic>>>(
                 future: _calculateEligibleDestinations(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
-
-                  // CRASH SAFEGUARD UI
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Text("No verified hubs found. Please contact support.", style: TextStyle(color: Colors.white));
-                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) return const Text("Calculating best hubs...", style: TextStyle(color: Colors.white70));
 
                   var allDestinations = snapshot.data!;
                   String bestMatchedId = allDestinations[0]['id'];
 
+                  // Set best match by default if nothing selected
                   if (widget.donationData['selectedNgoId'] == null) {
                     FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
                       'selectedNgoId': allDestinations[0]['id'],
                       'selectedNgoName': allDestinations[0]['data']['distributorName'] ?? allDestinations[0]['data']['ngoName'],
+                      'isHubConfirmed': false, // Newly assigned, not yet confirmed
                     });
                   }
 
                   String currentAssignedId = widget.donationData['selectedNgoId'] ?? bestMatchedId;
                   var currentDest = allDestinations.firstWhere((ngo) => ngo['id'] == currentAssignedId, orElse: () => allDestinations[0]);
                   bool isRecommendedSelected = currentAssignedId == bestMatchedId;
+
+                  // Fraud check for the currently selected node
+                  double nLat = currentDest['data']['latitude'] ?? 0.0; double nLon = currentDest['data']['longitude'] ?? 0.0;
+                  double donorLat = widget.donationData['latitude'] ?? widget.vLat; double donorLon = widget.donationData['longitude'] ?? widget.vLon;
+                  bool isFraudPossible = _isFraudulentDelivery(donorLat, donorLon, nLat, nLon);
 
                   return Container(
                     padding: const EdgeInsets.all(12),
@@ -272,7 +311,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text("Best Matched Food Hub:", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                            const Text("Selected Food Hub:", style: TextStyle(color: Colors.white70, fontSize: 12)),
                             Row(
                               children: [
                                 _buildTrustBadge(currentDest['data']['distributorType'] ?? 'NGO'),
@@ -286,24 +325,45 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                         Text(currentDest['data']['distributorName'] ?? currentDest['data']['ngoName'] ?? 'Hub', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                         const SizedBox(height: 3),
                         Text("🏢 ${currentDest['data']['fullAddress'] ?? ''}", style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                        Text("🗺️ ${currentDest['distKm'].toStringAsFixed(1)} km from you", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: TextButton.icon(
-                            onPressed: () => _showOverrideDestinationSelector(allDestinations, bestMatchedId),
-                            icon: const Icon(Icons.swap_calls, color: Colors.white),
-                            label: const Text("View other matched hubs", style: TextStyle(color: Colors.white, fontSize: 13)),
-                            style: TextButton.styleFrom(backgroundColor: Colors.black12),
+                        Text("🗺️ ${currentDest['distKm'].toStringAsFixed(1)} km from pickup", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 15),
+
+                        // --- NEW: PHASE 1 (picked Up, need to click confirm) ---
+                        if (isPickedUp) ...[
+                          SizedBox(
+                            width: double.infinity, height: 45,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                              onPressed: () => _confirmSelectedHub(currentAssignedId, currentDest['data']['distributorName'] ?? currentDest['data']['ngoName'], isFraudPossible),
+                              icon: const Icon(Icons.verified),
+                              label: const Text("Confirm Delivery Hub", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), // Professional Text
+                            ),
                           ),
-                        )
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _showOverrideDestinationSelector(allDestinations, bestMatchedId),
+                              icon: const Icon(Icons.swap_calls, color: Colors.white70),
+                              label: const Text("View other matched hubs", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white30), backgroundColor: Colors.black12),
+                            ),
+                          )
+                        ] else ...[
+                          // --- NEW: PHASE 2 (En Route, confirmed) ---
+                          Row(children: [
+                            CircleAvatar(radius: 12, backgroundColor: Colors.green.shade100, child: const Icon(Icons.check, color: Colors.green, size: 16)),
+                            const SizedBox(width: 8),
+                            const Text("HUB CONFIRMED", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.1)),
+                          ]),
+                          const SizedBox(height: 10),
+                          const Text("Deliver food and wait for coordinator to scan it.", style: TextStyle(color: Colors.white, fontSize: 12, fontStyle: FontStyle.italic)),
+                        ],
                       ],
                     ),
                   );
                 }
             ),
-            const SizedBox(height: 15),
-            const Text("✅ Upon arrival, ask the Hub Coordinator to snap a photo of the food on their app to finish.", style: TextStyle(color: Colors.white, fontSize: 13, fontStyle: FontStyle.italic)),
           ],
         ],
       ),
