@@ -10,6 +10,8 @@ import 'package:http/http.dart' as http;
 import 'volunteer_tabs/volunteer_home_tab.dart';
 import 'volunteer_tabs/volunteer_history_tab.dart';
 import 'volunteer_tabs/volunteer_profile_tab.dart';
+// IMPORT THE NEW LEADERBOARD SCREEN
+import 'gamification/city_leaderboard_screen.dart';
 
 class VolunteerDashboard extends StatefulWidget {
   const VolunteerDashboard({super.key});
@@ -52,7 +54,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
         currentUserUid: currentUser!.uid,
         userLat: userData?['latitude'],
         userLon: userData?['longitude'],
-        // INSTANT STATE UPDATE
         onCitySelected: (Map<String, dynamic> newLocationData) {
           if (mounted) {
             setState(() {
@@ -110,6 +111,34 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
             ],
           ),
         ),
+        // --- NEW: THE GOLD TROPHY LEADERBOARD BUTTON ---
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+              tooltip: "City Leaderboard",
+              onPressed: () {
+                if (userData != null && currentUser != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CityLeaderboardScreen(
+                        currentUserUid: currentUser!.uid,
+                        userCity: userData?['city'] ?? 'Unknown',
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        ],
       ),
       body: pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
@@ -128,6 +157,7 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
   }
 }
 
+// THE SEARCH SHEET STAYS EXACTLY THE SAME
 class VolunteerCitySearchSheet extends StatefulWidget {
   final String currentUserUid;
   final double? userLat;

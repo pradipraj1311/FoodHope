@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'ngo_tabs/ngo_home_tab.dart';
 import 'ngo_tabs/ngo_history_tab.dart';
 import 'ngo_tabs/ngo_profile_tab.dart';
+import 'gamification/city_leaderboard_screen.dart';
 
 class NgoDashboard extends StatefulWidget {
   const NgoDashboard({super.key});
@@ -90,31 +91,40 @@ class _NgoDashboardState extends State<NgoDashboard> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.teal.shade800,
-        foregroundColor: Colors.white,
-        title: GestureDetector(
-          onTap: _showCitySearchSheet,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.location_on, size: 20, color: Colors.white),
-                  const SizedBox(width: 4),
-                  Text(displayTopLine, style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                  const Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.white70),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.only(left: 24.0),
-                child: Text(displayBottomLine, style: const TextStyle(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis),
-              ),
-            ],
+    appBar: AppBar(
+    backgroundColor: Colors.white,
+      elevation: 0,
+      title: Text("Dashboard", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)), // (Keep whatever title you already have here)
+
+      // --- ADD THIS GOLD TROPHY BUTTON ---
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.amber.shade200),
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+            tooltip: "City Leaderboard",
+            onPressed: () {
+              if (userData != null && currentUser != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CityLeaderboardScreen(
+                      currentUserUid: currentUser!.uid,
+                      userCity: userData?['city'] ?? 'Nadiad',
+                    ),
+                  ),
+                );
+              }
+            },
           ),
         ),
-      ),
+      ],
+    ),
       body: pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
