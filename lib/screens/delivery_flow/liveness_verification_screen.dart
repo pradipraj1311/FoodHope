@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 
 class LivenessVerificationScreen extends StatefulWidget {
-  final String uid; // NEW: Passed in to update DB
+  final String uid;
   final VoidCallback onSuccess;
 
   const LivenessVerificationScreen({super.key, required this.uid, required this.onSuccess});
@@ -14,40 +13,32 @@ class LivenessVerificationScreen extends StatefulWidget {
 }
 
 class _LivenessVerificationScreenState extends State<LivenessVerificationScreen> {
-  int _step = 0;
-  bool _isProcessing = false;
+  bool isScanning = false;
+  String instruction = "Position your face in the frame";
 
-  void _startLivenessCheck() async {
-    setState(() { _step = 1; });
-    final picker = ImagePicker();
-    try {
-      final pickedFile = await picker.pickImage(
-          source: ImageSource.camera,
-          preferredCameraDevice: CameraDevice.front
-      );
+  // Simulate an AI scan for UI demonstration purposes
+  void _startMockScan() async {
+    setState(() { isScanning = true; instruction = "Scanning facial landmarks..."; });
+    await Future.delayed(const Duration(seconds: 2));
+    setState(() => instruction = "Please blink twice slowly...");
+    await Future.delayed(const Duration(seconds: 3));
+    setState(() => instruction = "Liveness verified! 100% Human.");
+    await Future.delayed(const Duration(seconds: 1));
 
-      if (pickedFile != null) {
-        setState(() { _step = 2; _isProcessing = true; });
+    _verifyUserAndProceed();
+  }
 
-        await Future.delayed(const Duration(seconds: 2)); // Mocking AI processing
+  Future<void> _verifyUserAndProceed() async {
+    // 1. Mark them as verified in the database
+    await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+      'isVerifiedVolunteer': true,
+      'verifiedAt': DateTime.now(),
+    });
 
-        // PERMANENTLY VERIFY THE VOLUNTEER
-        await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
-          'isVerifiedVolunteer': true,
-        });
-
-        setState(() { _step = 3; _isProcessing = false; });
-
-        await Future.delayed(const Duration(seconds: 1));
-        widget.onSuccess();
-        if (mounted) Navigator.pop(context);
-
-      } else {
-        setState(() { _step = 0; });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Camera Error. Please allow permissions.")));
-      setState(() { _step = 0; });
+    // 2. Go back to the feed and trigger the accept delivery logic!
+    if (mounted) {
+      Navigator.pop(context);
+      widget.onSuccess();
     }
   }
 
@@ -55,34 +46,67 @@ class _LivenessVerificationScreenState extends State<LivenessVerificationScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (_step == 0) ...[
-                const Icon(Icons.face, size: 100, color: Colors.greenAccent), const SizedBox(height: 20),
-                const Text("Security Verification", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
-                const Text("To ensure platform safety, we require a quick live selfie to permanently verify your identity.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 16)), const SizedBox(height: 40),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent.shade700, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)),
-                  onPressed: _startLivenessCheck, icon: const Icon(Icons.camera_front), label: const Text("Start Liveness Check", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                )
-              ] else if (_step == 1) ...[
-                const Icon(Icons.sentiment_satisfied_alt, size: 100, color: Colors.orangeAccent), const SizedBox(height: 20),
-                const Text("Please Smile!", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
-                const Text("Waiting for camera input...", style: TextStyle(color: Colors.white70, fontSize: 16)),
-              ] else if (_step == 2) ...[
-                const CircularProgressIndicator(color: Colors.greenAccent), const SizedBox(height: 20),
-                const Text("Analyzing AI Landmarks...", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-              ] else if (_step == 3) ...[
-                const Icon(Icons.verified, size: 100, color: Colors.greenAccent), const SizedBox(height: 20),
-                const Text("Identity Verified!", style: TextStyle(color: Colors.greenAccent, fontSize: 24, fontWeight: FontWeight.bold)),
-              ]
-            ],
-          ),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text("Verify Identity"),
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 40),
+            const Text("AI Liveness Check", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text(instruction, style: TextStyle(color: Colors.green.shade400, fontSize: 16)),
+            const SizedBox(height: 50),
+
+            // THE SCANNER UI
+            Center(
+              child: Container(
+                width: 250, height: 350,
+                decoration: BoxDecoration(
+                  border: Border.all(color: isScanning ? Colors.green : Colors.grey.shade800, width: 4),
+                  borderRadius: BorderRadius.circular(150),
+                ),
+                child: isScanning
+                    ? const Center(child: CircularProgressIndicator(color: Colors.green, strokeWidth: 6))
+                    : const Icon(Icons.face, size: 100, color: Colors.white24),
+              ),
+            ),
+
+            const Spacer(),
+
+            if (!isScanning)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: SizedBox(
+                  width: double.infinity, height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _startMockScan,
+                    icon: const Icon(Icons.camera_front),
+                    label: const Text("Start Camera Scan"),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade700, foregroundColor: Colors.white),
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 20),
+
+            // --- THE DEVELOPER SKIP BUTTON ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+              child: SizedBox(
+                width: double.infinity, height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _verifyUserAndProceed,
+                  icon: const Icon(Icons.developer_mode),
+                  label: const Text("SKIP (TESTING MODE)"),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -56,25 +56,19 @@ class _DonorDashboardState extends State<DonorDashboard> {
         onCitySelected: (String newShortAddress) {
           _fetchUserDetails();
         },
-
       ),
-
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.orange)));
 
-    // EXACT ZOMATO STITCHING
+    // --- FIXED: Only ONE set of declarations ---
     String building = userData?['exactAddress'] ?? '';
     String street = userData?['streetName'] ?? '';
-
-    // If they filled out the profile, show building on top. Otherwise fallback to GPS City.
-    String displayTopLine = building.isNotEmpty ? building : (userData?['city'] ?? 'Unknown Location');
-
-    // If they filled out the profile, show street on bottom. Otherwise fallback to GPS Full Address.
-    String displayBottomLine = street.isNotEmpty ? "$street, ${userData?['city'] ?? ''}" : (userData?['fullAddress'] ?? 'Tap to set your exact location');
+    String displayTopLine = building.isNotEmpty ? building : (userData?['city'] ?? 'Set Location');
+    String displayBottomLine = street.isNotEmpty ? "$street, ${userData?['city'] ?? ''}" : (userData?['fullAddress'] ?? 'Tap to set exact location');
 
     final List<Widget> pages = [
       DonorHomeTab(userData: userData!, uid: currentUser!.uid),
@@ -84,40 +78,57 @@ class _DonorDashboardState extends State<DonorDashboard> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-    appBar: AppBar(
-    backgroundColor: Colors.white,
-      elevation: 0,
-      title: Text("Dashboard", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)), // (Keep whatever title you already have here)
-
-      // --- ADD THIS GOLD TROPHY BUTTON ---
-      actions: [
-        Container(
-          margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-          decoration: BoxDecoration(
-            color: Colors.amber.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.amber.shade200),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
-            tooltip: "City Leaderboard",
-            onPressed: () {
-              if (userData != null && currentUser != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CityLeaderboardScreen(
-                      currentUserUid: currentUser!.uid,
-                      userCity: userData?['city'] ?? 'Nadiad',
-                    ),
-                  ),
-                );
-              }
-            },
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: GestureDetector(
+          onTap: _showCitySearchSheet,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.location_on, size: 22, color: Colors.orange.shade700),
+                  const SizedBox(width: 4),
+                  Text(displayTopLine, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
+                  const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 26.0),
+                child: Text(displayBottomLine, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
+              ),
+            ],
           ),
         ),
-      ],
-    ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+              tooltip: "City Leaderboard",
+              onPressed: () {
+                if (userData != null && currentUser != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CityLeaderboardScreen(
+                        currentUserUid: currentUser!.uid,
+                        userCity: userData?['city'] ?? 'Nadiad',
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        ],
+      ),
       body: pages[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
@@ -139,6 +150,7 @@ class _DonorDashboardState extends State<DonorDashboard> {
   }
 }
 
+// --- SEARCH SHEET STAYS EXACTLY THE SAME ---
 class DonorCitySearchSheet extends StatefulWidget {
   final String currentUserUid;
   final double? userLat;

@@ -91,40 +91,59 @@ class _NgoDashboardState extends State<NgoDashboard> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-    appBar: AppBar(
-    backgroundColor: Colors.white,
-      elevation: 0,
-      title: Text("Dashboard", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)), // (Keep whatever title you already have here)
-
-      // --- ADD THIS GOLD TROPHY BUTTON ---
-      actions: [
-        Container(
-          margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-          decoration: BoxDecoration(
-            color: Colors.amber.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.amber.shade200),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
-            tooltip: "City Leaderboard",
-            onPressed: () {
-              if (userData != null && currentUser != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CityLeaderboardScreen(
-                      currentUserUid: currentUser!.uid,
-                      userCity: userData?['city'] ?? 'Nadiad',
-                    ),
-                  ),
-                );
-              }
-            },
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        // --- NEW LOCATION TITLE UI ---
+        title: GestureDetector(
+          onTap: _showCitySearchSheet,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.location_on, size: 22, color: Colors.teal.shade700), // Teal icon for NGO
+                  const SizedBox(width: 4),
+                  Text(displayTopLine, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
+                  const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 26.0),
+                child: Text(displayBottomLine, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
+              ),
+            ],
           ),
         ),
-      ],
-    ),
+        // --- KEEP YOUR EXISTING GOLD TROPHY BUTTON HERE ---
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+              tooltip: "City Leaderboard",
+              onPressed: () {
+                if (userData != null && currentUser != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CityLeaderboardScreen(
+                        currentUserUid: currentUser!.uid,
+                        userCity: userData?['city'] ?? 'Nadiad',
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        ],
+      ),
       body: pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
