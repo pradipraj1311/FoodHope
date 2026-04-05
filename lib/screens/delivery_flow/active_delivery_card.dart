@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
 import 'widgets/active_urgency_timer.dart';
 import 'widgets/delivery_milestone_tracker.dart';
 import 'widgets/override_hub_sheet.dart';
@@ -61,24 +60,6 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     return Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)]), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 12, color: color), const SizedBox(width: 4), Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold))]));
   }
 
-  Future<void> _completeDeliveryWithPhoto() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
-
-    if (photo != null) {
-      if (mounted) showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.green)));
-
-      await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
-        'status': 'Completed', 'dropoffTime': DateTime.now(), 'photoProofUrl': 'verified_local_path',
-      });
-
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🎉 Delivery Completed! Incredible job!")));
-      }
-    }
-  }
-
   Future<List<Map<String, dynamic>>> _calculateEligibleDestinations(DateTime safeExpiryTime) async {
     int foodQuantity = widget.donationData['quantity'] ?? 0;
     String foodCategory = widget.donationData['category'] ?? 'Veg Only';
@@ -86,7 +67,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     double startLon = widget.donationData['longitude'] ?? widget.vLon;
     int minsLeftTotal = safeExpiryTime.difference(DateTime.now()).inMinutes;
 
-    QuerySnapshot ngoSnapshot = await FirebaseFirestore.instance.collection('users').where('isVerified', isEqualTo: true).get();
+    QuerySnapshot ngoSnapshot = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'NGO').get();
     List<Map<String, dynamic>> scoredNgos = [];
 
     for (var doc in ngoSnapshot.docs) {
@@ -110,7 +91,14 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
   }
 
   Future<void> _confirmSelectedHub(String ngoId, String ngoName, bool isFraud) async {
-    await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({'selectedNgoId': ngoId, 'selectedNgoName': ngoName, 'isFlaggedForFraud': isFraud, 'status': 'En Route', 'isHubConfirmed': true, 'hubConfirmedAt': DateTime.now()});
+    await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
+      'selectedNgoId': ngoId,
+      'selectedNgoName': ngoName,
+      'isFlaggedForFraud': isFraud,
+      'status': 'En Route',
+      'isHubConfirmed': true,
+      'hubConfirmedAt': DateTime.now()
+    });
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hub Confirmed! Please start driving.")));
   }
 
@@ -135,13 +123,13 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DeliveryMilestoneTracker(status: status), // <--- EXTRACTED COMPONENT
+          DeliveryMilestoneTracker(status: status),
 
           Row(children: [Icon(isPickedUp || isEnRoute ? Icons.local_shipping : Icons.directions_bike, color: Colors.white, size: 28), const SizedBox(width: 10), Text(isPickedUp || isEnRoute ? "GO TO HUB" : "ACTIVE PICKUP", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.2))]),
           const Divider(color: Colors.white54, height: 25),
           Text("📦 ${widget.donationData['foodItem']}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 10),
 
-          if (safeExpiryTime != null && !isSafeWindowMissed) ActiveUrgencyTimer(safeExpiryTime: safeExpiryTime), // <--- EXTRACTED COMPONENT
+          if (safeExpiryTime != null && !isSafeWindowMissed) ActiveUrgencyTimer(safeExpiryTime: safeExpiryTime),
           const SizedBox(height: 15),
 
           if (!isPickedUp && !isEnRoute) ...[
@@ -189,20 +177,32 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                         Text("🏢 ${currentDest['data']['fullAddress'] ?? ''}", style: const TextStyle(color: Colors.white70, fontSize: 13)),
                         Text("🗺️ ${currentDest['distKm'].toStringAsFixed(1)} km from pickup", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)), const SizedBox(height: 15),
 
-                        if (isPickedUp) ...[
-                          SizedBox(width: double.infinity, height: 45, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () => _confirmSelectedHub(currentAssignedId, currentDest['data']['distributorName'], isFraudPossible), icon: const Icon(Icons.verified), label: const Text("Confirm Delivery Hub", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)))), const SizedBox(height: 10),
+                        // --- THE LOGIC SPLIT: Picked Up vs En Route ---
+                        if (isPickedUp && !isEnRoute) ...[
+                          SizedBox(width: double.infinity, height: 45, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () => _confirmSelectedHub(currentAssignedId, currentDest['data']['distributorName'] ?? currentDest['data']['ngoName'], isFraudPossible), icon: const Icon(Icons.verified), label: const Text("Confirm Delivery Hub", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)))), const SizedBox(height: 10),
                           SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
-                                // --- EXTRACTED COMPONENT FOR BOTTOM SHEET ---
                                   onPressed: () => showModalBottomSheet(context: context, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (context) => OverrideHubSheet(donationId: widget.donationId, allDestinations: allDestinations, recommendedId: bestMatchedId)),
                                   icon: const Icon(Icons.swap_calls, color: Colors.white70), label: const Text("View other matched hubs", style: TextStyle(color: Colors.white70, fontSize: 13)), style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white30), backgroundColor: Colors.black12)
                               )
                           )
-                        ] else ...[
-                          Row(children: [CircleAvatar(radius: 12, backgroundColor: Colors.green.shade100, child: const Icon(Icons.check, color: Colors.green, size: 16)), const SizedBox(width: 8), const Text("ARRIVED AT HUB", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.1))]),
-                          const SizedBox(height: 15),
-                          SizedBox(width: double.infinity, height: 50, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.green.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _completeDeliveryWithPhoto, icon: const Icon(Icons.camera_alt), label: const Text("Take Photo & Complete", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))))
+                        ] else if (isEnRoute) ...[
+                          // NO CAMERA BUTTON HERE ANYMORE - Just instructions!
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                            child: Column(
+                              children: [
+                                Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 40),
+                                const SizedBox(height: 10),
+                                const Text("Hand food to the NGO", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                const SizedBox(height: 5),
+                                Text("The NGO will take a photo on their app to confirm receipt and automatically award your points!", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                              ],
+                            ),
+                          )
                         ],
                       ],
                     ),

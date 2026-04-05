@@ -1,199 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:geolocator/geolocator.dart';
-import 'dart:async';
+import '../../widgets/rank_motivational_banner.dart';
+import 'widgets/available_donation_card.dart';
 import '../delivery_flow/active_delivery_card.dart';
-import '../delivery_flow/liveness_verification_screen.dart';
 
-class SmartDeliveryTimer extends StatefulWidget {
-  final DateTime safeExpiryTime; // Uses the -30 min buffered time
-  final double distKm;
-  const SmartDeliveryTimer({super.key, required this.safeExpiryTime, required this.distKm});
-
-  @override
-  State<SmartDeliveryTimer> createState() => _SmartDeliveryTimerState();
-}
-
-class _SmartDeliveryTimerState extends State<SmartDeliveryTimer> {
-  Timer? _timer; String uiState = "Calculating..."; Color uiColor = Colors.green; IconData uiIcon = Icons.timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _updateTime();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) { if (mounted) _updateTime(); });
-  }
-
-  void _updateTime() {
-    Duration diff = widget.safeExpiryTime.difference(DateTime.now());
-
-    if (diff.isNegative) {
-      setState(() { uiState = "WINDOW CLOSED"; uiColor = Colors.red; uiIcon = Icons.block; });
-      _timer?.cancel();
-    } else {
-      int minsLeft = diff.inMinutes;
-      int travelRequiredMins = (widget.distKm * 3.0).toInt();
-      int latestPickupMins = minsLeft - travelRequiredMins;
-
-      String h = diff.inHours.toString().padLeft(2, '0');
-      String m = (diff.inMinutes % 60).toString().padLeft(2, '0');
-      String s = (diff.inSeconds % 60).toString().padLeft(2, '0');
-
-      setState(() {
-        if (latestPickupMins <= 0) { uiState = "⚠️ Not safe for Hub ($h:$m:$s left)"; uiColor = Colors.red.shade700; uiIcon = Icons.warning_amber_rounded; }
-        else if (latestPickupMins <= 30) { uiState = "🔥 Urgent Pickup ($h:$m:$s left)"; uiColor = Colors.orange.shade800; uiIcon = Icons.local_fire_department; }
-        else { uiState = "⏳ Safe Window ($h:$m:$s left)"; uiColor = Colors.green.shade700; uiIcon = Icons.check_circle_outline; }
-      });
-    }
-  }
-
-  @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), decoration: BoxDecoration(color: uiColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: uiColor.withOpacity(0.3))), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(uiIcon, size: 14, color: uiColor), const SizedBox(width: 6), Flexible(child: Text(uiState, style: TextStyle(color: uiColor, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.1)))]));
-  }
-}
-
-class VolunteerHomeTab extends StatefulWidget {
+class VolunteerHomeTab extends StatelessWidget {
   final Map<String, dynamic> userData;
   final String uid;
+
   const VolunteerHomeTab({super.key, required this.userData, required this.uid});
-  @override State<VolunteerHomeTab> createState() => _VolunteerHomeTabState();
-}
-
-class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
-  String _searchQuery = ""; String _selectedFilter = "All";
-
-  Future<void> _acceptDelivery(BuildContext context, String donationId, double vLat, double vLon) async {
-    await FirebaseFirestore.instance.collection('donations').doc(donationId).update({'status': 'Accepted', 'volunteerUid': widget.uid, 'volunteerName': widget.userData['name'] ?? 'Volunteer', 'volunteerContact': widget.userData['contact'] ?? '', 'pickupTime': DateTime.now(), 'volunteerLatitude': vLat, 'volunteerLongitude': vLon});
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Delivery Accepted! Drive to the Donor.")));
-  }
-
-  void _handleAcceptAttempt(BuildContext context, String donationId, double vLat, double vLon) {
-    bool isVerified = widget.userData['isVerifiedVolunteer'] ?? false;
-    if (isVerified) { _acceptDelivery(context, donationId, vLat, vLon); }
-    else { Navigator.push(context, MaterialPageRoute(builder: (context) => LivenessVerificationScreen(uid: widget.uid, onSuccess: () => _acceptDelivery(context, donationId, vLat, vLon)))); }
-  }
-
-  Widget _buildFilterChip(String label, IconData icon) {
-    bool isSelected = _selectedFilter == label;
-    return Padding(padding: const EdgeInsets.only(right: 8.0), child: ChoiceChip(label: Row(children: [Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.green.shade700), const SizedBox(width: 4), Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold))]), selected: isSelected, selectedColor: Colors.green.shade700, backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)), onSelected: (bool selected) => setState(() => _selectedFilter = selected ? label : "All")));
-  }
 
   @override
   Widget build(BuildContext context) {
-    String userCity = widget.userData['city'] ?? 'Unknown City';
-    double vLat = widget.userData['latitude'] ?? 0.0; double vLon = widget.userData['longitude'] ?? 0.0;
-
-    // VOLUNTEER DIET PREFERENCE
-    String vPref = widget.userData['foodPreference'] ?? 'Any Food (Veg & Non-Veg)';
+    double vLat = userData['latitude'] ?? 0.0;
+    double vLon = userData['longitude'] ?? 0.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('donations').where('volunteerUid', isEqualTo: widget.uid).where('status', whereIn: ['Accepted', 'Picked Up', 'En Route']).snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
-            var activePost = snapshot.data!.docs.first;
-            return ActiveDeliveryCard(donationData: activePost.data() as Map<String, dynamic>, donationId: activePost.id, vLat: vLat, vLon: vLon);
-          },
-        ),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Column(
-            children: [
-              TextField(decoration: InputDecoration(hintText: "Search for food...", prefixIcon: const Icon(Icons.search, color: Colors.grey), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(vertical: 0), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300))), onChanged: (value) => setState(() => _searchQuery = value.toLowerCase())),
-              const SizedBox(height: 12),
-              SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: [_buildFilterChip("All", Icons.filter_list), _buildFilterChip("Veg Only", Icons.grass), _buildFilterChip("Expiring Soon", Icons.timer), _buildFilterChip("Large Qty (>50)", Icons.group)])),
-            ],
-          ),
-        ),
-
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), child: Text("Urgent Rescues Near You", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
+        RankMotivationalBanner(uid: uid, city: userData['city'] ?? 'Unknown', role: 'Volunteer'),
 
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('donations').where('city', isEqualTo: userCity).where('status', isEqualTo: 'Available').snapshots(),
+            stream: FirebaseFirestore.instance.collection('donations')
+                .where('city', isEqualTo: userData['city'])
+                .where('status', whereIn: ['Available', 'Accepted', 'Picked Up', 'En Route'])
+                .snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No available food in this area."));
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.green));
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No active food alerts in your city.", style: TextStyle(color: Colors.grey)));
 
-              DateTime now = DateTime.now();
+              var allActiveDocs = snapshot.data!.docs;
 
-              var filteredDocs = snapshot.data!.docs.where((doc) {
-                var data = doc.data() as Map<String, dynamic>;
-                if (data['exactExpiryTime'] == null) return false;
+              var myActiveDeliveries = allActiveDocs.where((doc) => (doc.data() as Map<String, dynamic>)['volunteerUid'] == uid && ['Accepted', 'Picked Up', 'En Route'].contains((doc.data() as Map<String, dynamic>)['status'])).toList();
 
-                // STRICT DIETARY FILTER
-                String foodCategory = data['category'] ?? 'Veg Only';
-                if (vPref == 'Veg Only' && (foodCategory == 'Non-Veg' || foodCategory == 'Both (Mixed)')) return false;
+              if (myActiveDeliveries.isNotEmpty) {
+                var activeDoc = myActiveDeliveries.first;
+                return ActiveDeliveryCard(donationData: activeDoc.data() as Map<String, dynamic>, donationId: activeDoc.id, vLat: vLat, vLon: vLon);
+              }
 
-                // Apply Hidden 30-Min Buffer
-                DateTime trueExpiry = (data['exactExpiryTime'] as Timestamp).toDate();
-                DateTime safeExpiryTime = trueExpiry.subtract(const Duration(minutes: 30));
-
-                if (safeExpiryTime.isBefore(now)) return false;
-
-                if (_searchQuery.isNotEmpty && !(data['foodItem'] ?? '').toString().toLowerCase().contains(_searchQuery)) return false;
-                if (_selectedFilter == "Veg Only" && foodCategory != "Veg Only") return false;
-                if (_selectedFilter == "Large Qty (>50)" && (data['quantity'] ?? 0) < 50) return false;
-                if (_selectedFilter == "Expiring Soon" && safeExpiryTime.difference(now).inMinutes > 90) return false;
-                return true;
-              }).toList();
-
-              filteredDocs.sort((a, b) {
-                var dataA = a.data() as Map<String, dynamic>; var dataB = b.data() as Map<String, dynamic>;
-                double distA = Geolocator.distanceBetween(vLat, vLon, dataA['latitude'] ?? 0.0, dataA['longitude'] ?? 0.0) / 1000;
-                double distB = Geolocator.distanceBetween(vLat, vLon, dataB['latitude'] ?? 0.0, dataB['longitude'] ?? 0.0) / 1000;
-
-                DateTime safeExpiryA = (dataA['exactExpiryTime'] as Timestamp).toDate().subtract(const Duration(minutes: 30));
-                DateTime safeExpiryB = (dataB['exactExpiryTime'] as Timestamp).toDate().subtract(const Duration(minutes: 30));
-
-                int timeA = safeExpiryA.difference(now).inMinutes;
-                int timeB = safeExpiryB.difference(now).inMinutes;
-
-                double scoreA = timeA / (distA > 0.5 ? distA : 0.5); double scoreB = timeB / (distB > 0.5 ? distB : 0.5);
-                return scoreA.compareTo(scoreB);
-              });
-
-              if (filteredDocs.isEmpty) return const Center(child: Text("No food matches filters."));
+              var availableDocs = allActiveDocs.where((doc) => (doc.data() as Map<String, dynamic>)['status'] == 'Available').toList();
+              if (availableDocs.isEmpty) return const Center(child: Text("No available food alerts right now.", style: TextStyle(color: Colors.grey)));
 
               return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5), itemCount: filteredDocs.length,
+                padding: const EdgeInsets.all(16), itemCount: availableDocs.length,
                 itemBuilder: (context, index) {
-                  var post = filteredDocs[index]; Map<String, dynamic> postData = post.data() as Map<String, dynamic>;
-                  double dLat = postData['latitude'] ?? 0.0; double dLon = postData['longitude'] ?? 0.0;
-                  double distKm = Geolocator.distanceBetween(vLat, vLon, dLat, dLon) / 1000;
-
-                  DateTime safeExpiry = (postData['exactExpiryTime'] as Timestamp).toDate().subtract(const Duration(minutes: 30));
-                  int minsLeft = safeExpiry.difference(now).inMinutes;
-                  bool isTooRisky = (minsLeft - (distKm * 3.0).toInt()) <= 0;
-
-                  return Card(
-                    elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), margin: const EdgeInsets.only(bottom: 15),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(postData['foodItem'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), Chip(label: Text(postData['category'] ?? 'Food', style: TextStyle(color: Colors.green.shade800, fontSize: 12, fontWeight: FontWeight.bold)), backgroundColor: Colors.green.shade50, side: BorderSide.none)]),
-                          const SizedBox(height: 5), Row(children: [const Icon(Icons.people, size: 16, color: Colors.blue), const SizedBox(width: 4), Text("Feeds ${postData['quantity']} • ${postData['foodState']}", style: const TextStyle(fontWeight: FontWeight.w600))]),
-                          const Divider(height: 25),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("📍 Pickup Details:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)), if (vLat != 0.0 && dLat != 0.0) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)), child: Row(children: [Icon(Icons.route, size: 14, color: Colors.grey.shade800), const SizedBox(width: 4), Text("${distKm.toStringAsFixed(1)} km away", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]))]),
-                          const SizedBox(height: 4), Text("🗺️ Address: ${postData['fullAddress'] ?? 'N/A'}", style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
-                          const SizedBox(height: 12),
-
-                          SmartDeliveryTimer(safeExpiryTime: safeExpiry, distKm: distKm),
-
-                          const SizedBox(height: 15),
-                          SizedBox(width: double.infinity, height: 45, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: isTooRisky ? Colors.grey.shade400 : Colors.green.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: isTooRisky ? null : () => _handleAcceptAttempt(context, post.id, vLat, vLon), icon: isTooRisky ? const Icon(Icons.block) : const Icon(Icons.motorcycle), label: Text(isTooRisky ? "Window Closed" : "Accept Delivery", style: const TextStyle(fontSize: 16))))
-                        ],
-                      ),
-                    ),
+                  return AvailableDonationCard(
+                    donation: availableDocs[index].data() as Map<String, dynamic>,
+                    donationId: availableDocs[index].id,
+                    vLat: vLat, vLon: vLon, volunteerUid: uid,
                   );
                 },
               );
