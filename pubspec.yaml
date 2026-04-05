@@ -17,12 +17,10 @@ dependencies:
   firebase_core:
   firebase_auth:
   cloud_firestore:
-  google_sign_in:
 
   # --- Safe / Unrelated Packages ---
   cupertino_icons: ^1.0.2
   intl: ^0.20.2
-  http: ^1.2.2
   image_picker: ^1.1.2
   geolocator: ^13.0.1
   geocoding: ^3.0.0
