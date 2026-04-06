@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
-import 'donor_dashboard.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'volunteer_dashboard.dart';
 
 class VolunteerProfileSetup extends StatefulWidget {
   const VolunteerProfileSetup({super.key});
@@ -13,138 +13,98 @@ class VolunteerProfileSetup extends StatefulWidget {
 }
 
 class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
-  final TextEditingController affiliatedNgoController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  String _selectedVehicle = 'Scooter / Motorcycle';
+  String _base64Image = '';
+  bool _isLoading = false;
 
-  String selectedTransport = 'Two-Wheeler (Bike/Scooter)';
-  final List<String> transportOptions = ['Walking', 'Two-Wheeler (Bike/Scooter)', 'Car', 'Large Van/Truck'];
-
-  String selectedAvailability = 'Anytime / On-Call';
-  final List<String> availabilityOptions = ['Weekday Mornings', 'Weekday Evenings', 'Weekends Only', 'Anytime / On-Call'];
-
-  double travelRadius = 5.0;
-  bool isAffiliatedWithNgo = false;
-  bool isLoading = false;
-
-  @override
-  void dispose() {
-    affiliatedNgoController.dispose();
-    super.dispose();
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.camera, imageQuality: 25);
+    if (image != null) {
+      List<int> imageBytes = await image.readAsBytes();
+      setState(() => _base64Image = base64Encode(imageBytes));
+    }
   }
 
-  Future<Position?> _determinePosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return null;
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return null;
+  Future<void> _completeSetup() async {
+    if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _base64Image.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Name, Phone, and Photo are mandatory!"), backgroundColor: Colors.red));
+      return;
     }
-    if (permission == LocationPermission.deniedForever) return null;
-    return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-  }
-  Future<void> saveProfile() async {
-    setState(() => isLoading = true);
 
-    try {
-      Position? position = await _determinePosition();
-      if (position == null) {
-        setState(() => isLoading = false);
-        return;
-      }
+    setState(() => _isLoading = true);
+    User? user = FirebaseAuth.instance.currentUser;
 
-      // NEW: Convert GPS to readable text
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
-      Placemark place = placemarks[0];
-      String city = place.locality ?? "Unknown City";
-      String state = place.administrativeArea ?? "Unknown State";
-      String country = place.country ?? "Unknown Country";
+    // બધી જ જરૂરી માહિતી ડેટાબેઝમાં અપડેટ કરો
+    await FirebaseFirestore.instance.collection('users').doc(user!.uid).update({
+      'name': _nameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'contact': _phoneController.text.trim(),
+      'vehicleType': _selectedVehicle,
+      'profileImageUrl': _base64Image,
+      'isVerified': false,
+      'trustScore': 100,
+      'successRate': 100,
+      'deliveriesMade': 0,
+      'rankScore': 0,
+    });
 
-      String uid = FirebaseAuth.instance.currentUser!.uid;
-
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'transportationMode': selectedTransport,
-        'availability': selectedAvailability,
-        'travelRadiusKm': travelRadius,
-        'isAffiliatedWithNgo': isAffiliatedWithNgo,
-        'affiliatedNgoName': isAffiliatedWithNgo ? affiliatedNgoController.text.trim() : "Independent",
-        // NEW: Location details
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'city': city,
-        'state': state,
-        'country': country,
-        'address': "${place.street}, $city",
-        'isProfileComplete': true,
-      });
-
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Volunteer Profile Complete!")));
-    } catch (e) {
-      print("Error: $e");
-    } finally {
-      if (mounted) setState(() => isLoading = false);
-    }
+    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VolunteerDashboard()));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Volunteer Setup"), automaticallyImplyLeading: false),
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: const Text("Complete Profile"), automaticallyImplyLeading: false, backgroundColor: Colors.white, elevation: 0, foregroundColor: Colors.black),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DropdownButtonFormField<String>(
-              value: selectedTransport,
-              decoration: const InputDecoration(labelText: "Mode of Transportation", border: OutlineInputBorder()),
-              items: transportOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedTransport = val!),
+            const Text("One Last Step!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.green)),
+            const SizedBox(height: 10),
+            const Text("To prevent fraud and assign rescues correctly, we need a bit more info.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+            const SizedBox(height: 30),
+
+            Align(
+              alignment: Alignment.center,
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundColor: Colors.green.shade50,
+                  backgroundImage: _base64Image.isNotEmpty ? MemoryImage(base64Decode(_base64Image)) : null,
+                  child: _base64Image.isEmpty ? const Icon(Icons.camera_alt, size: 40, color: Colors.green) : null,
+                ),
+              ),
             ),
+            const Align(alignment: Alignment.center, child: Padding(padding: EdgeInsets.only(top: 8), child: Text("Live Photo Required *", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)))),
+            const SizedBox(height: 30),
+
+            TextField(controller: _nameController, decoration: InputDecoration(labelText: "Full Name *", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 15),
+            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: "Phone Number *", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 15),
 
             DropdownButtonFormField<String>(
-              value: selectedAvailability,
-              decoration: const InputDecoration(labelText: "Typical Availability", border: OutlineInputBorder()),
-              items: availabilityOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedAvailability = val!),
+              value: _selectedVehicle,
+              decoration: InputDecoration(labelText: "Primary Transport *", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+              items: ['Bicycle', 'Scooter / Motorcycle', 'Car', 'Walking'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (val) => setState(() => _selectedVehicle = val!),
             ),
-            const SizedBox(height: 25),
-
-            Text("Willing to travel: ${travelRadius.toInt()} km", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            Slider(
-              value: travelRadius,
-              min: 1, max: 30, divisions: 29,
-              activeColor: Colors.green,
-              label: "${travelRadius.toInt()} km",
-              onChanged: (value) => setState(() => travelRadius = value),
-            ),
-            const Divider(height: 40),
-
-            SwitchListTile(
-              title: const Text("I am delivering for a specific NGO"),
-              subtitle: const Text("Turn on if you are not an independent volunteer"),
-              value: isAffiliatedWithNgo,
-              activeColor: Colors.green,
-              onChanged: (bool value) => setState(() => isAffiliatedWithNgo = value),
-            ),
-
-            if (isAffiliatedWithNgo) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: affiliatedNgoController,
-                decoration: const InputDecoration(labelText: "Enter NGO Name or Invite Code", border: OutlineInputBorder()),
-              ),
-            ],
 
             const SizedBox(height: 30),
             SizedBox(
-              width: double.infinity, height: 50,
+              width: double.infinity, height: 55,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
-                onPressed: isLoading ? null : saveProfile,
-                child: isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Save Base Location & Start", style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _isLoading ? null : _completeSetup,
+                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Start Rescuing Food", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
-            ),
+            )
           ],
         ),
       ),
