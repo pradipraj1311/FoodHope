@@ -3,7 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'donor_dashboard.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'ngo_dashboard.dart';
 
 class NgoProfileSetup extends StatefulWidget {
   const NgoProfileSetup({super.key});
@@ -14,26 +16,52 @@ class NgoProfileSetup extends StatefulWidget {
 
 class _NgoProfileSetupState extends State<NgoProfileSetup> {
   final TextEditingController orgNameController = TextEditingController();
-
-  // Dropdown States
-  String selectedFoodCategory = 'Both Veg & Non-Veg';
-  final List<String> foodCategories = ['Veg Only', 'Non-Veg Only', 'Both Veg & Non-Veg'];
-
-  String selectedStorage = 'Dry Storage Only';
-  final List<String> storageOptions = ['Dry Storage Only', 'Has Refrigerators', 'Has Freezers', 'Full Kitchen Setup'];
-
-  String selectedCapacity = '50 - 200 people';
-  final List<String> capacityOptions = ['10 - 50 people', '50 - 200 people', '200+ people'];
-
-  String selectedReceiveTime = 'Anytime';
-  final List<String> receiveTimes = ['Morning (8 AM - 12 PM)', 'Afternoon (12 PM - 4 PM)', 'Evening (4 PM - 8 PM)', 'Anytime'];
-
+  final TextEditingController buildingController = TextEditingController();
+  final TextEditingController streetController = TextEditingController();
+  
+  String _base64Image = '';
   bool isLoading = false;
+  String currentCity = "Fetching...";
+
+  @override
+  void initState() {
+    super.initState();
+    _autoFetchLocation();
+  }
 
   @override
   void dispose() {
     orgNameController.dispose();
+    buildingController.dispose();
+    streetController.dispose();
     super.dispose();
+  }
+
+  Future<void> _autoFetchLocation() async {
+    setState(() => currentCity = "Locating...");
+    try {
+      Position? position = await _determinePosition();
+      if (position != null) {
+        List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+        if (placemarks.isNotEmpty) {
+          setState(() {
+            currentCity = placemarks[0].locality ?? "Unknown City";
+            if (streetController.text.isEmpty) streetController.text = placemarks[0].street ?? "";
+          });
+        }
+      }
+    } catch (e) {
+      setState(() => currentCity = "Location Error");
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 25);
+    if (image != null) {
+      List<int> imageBytes = await image.readAsBytes();
+      setState(() => _base64Image = base64Encode(imageBytes));
+    }
   }
 
   Future<Position?> _determinePosition() async {
@@ -44,104 +72,95 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return null;
     }
-    if (permission == LocationPermission.deniedForever) return null;
     return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
+
   Future<void> saveProfile() async {
-    if (orgNameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter Organization Name.")));
+    if (orgNameController.text.isEmpty || buildingController.text.isEmpty || streetController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all mandatory fields!")));
       return;
     }
     setState(() => isLoading = true);
 
     try {
       Position? position = await _determinePosition();
-      if (position == null) {
-        setState(() => isLoading = false);
-        return;
+      String city = currentCity;
+      if (position != null) {
+        List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+        if (placemarks.isNotEmpty) {
+          city = placemarks[0].locality ?? currentCity;
+        }
       }
-
-      // NEW: Convert GPS to readable text
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
-      Placemark place = placemarks[0];
-      String city = place.locality ?? "Unknown City";
-      String state = place.administrativeArea ?? "Unknown State";
-      String country = place.country ?? "Unknown Country";
 
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'profileImageUrl': _base64Image,
         'organizationName': orgNameController.text.trim(),
-        'foodCategory': selectedFoodCategory,
-        'storageCapacity': selectedStorage,
-        'feedingCapacity': selectedCapacity,
-        'preferredReceiveTime': selectedReceiveTime,
-        // NEW: Location details
-        'latitude': position.latitude,
-        'longitude': position.longitude,
+        'distributorName': orgNameController.text.trim(),
+        'exactAddress': buildingController.text.trim(),
+        'streetName': streetController.text.trim(),
+        'latitude': position?.latitude ?? 0.0,
+        'longitude': position?.longitude ?? 0.0,
         'city': city,
-        'state': state,
-        'country': country,
-        'address': "${place.street}, $city",
+        'fullAddress': "${buildingController.text.trim()}, ${streetController.text.trim()}, $city",
         'isProfileComplete': true,
+        'rankScore': 0,
+        'deliveriesReceived': 0,
       });
 
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("NGO Profile Complete!")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("NGO Profile Complete!")));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const NgoDashboard()));
+      }
     } catch (e) {
-      print("Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("NGO Hub Setup"), automaticallyImplyLeading: false),
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: const Text("NGO Hub Setup"), automaticallyImplyLeading: false, elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            TextField(controller: orgNameController, decoration: const InputDecoration(labelText: "Organization Name*", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-
-            DropdownButtonFormField<String>(
-              value: selectedFoodCategory,
-              decoration: const InputDecoration(labelText: "Accepted Food Category", border: OutlineInputBorder()),
-              items: foodCategories.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedFoodCategory = val!),
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: Colors.teal.shade50,
+                backgroundImage: _base64Image.isNotEmpty ? MemoryImage(base64Decode(_base64Image)) : null,
+                child: _base64Image.isEmpty ? const Icon(Icons.add_a_photo, size: 40, color: Colors.teal) : null,
+              ),
             ),
+            const SizedBox(height: 25),
+            TextField(controller: orgNameController, decoration: const InputDecoration(labelText: "Organization Name*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.corporate_fare))),
             const SizedBox(height: 15),
-
-            DropdownButtonFormField<String>(
-              value: selectedStorage,
-              decoration: const InputDecoration(labelText: "Storage Capabilities", border: OutlineInputBorder()),
-              items: storageOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedStorage = val!),
-            ),
+            TextField(controller: buildingController, decoration: const InputDecoration(labelText: "Building / Trust Name*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.home))),
             const SizedBox(height: 15),
-
-            DropdownButtonFormField<String>(
-              value: selectedCapacity,
-              decoration: const InputDecoration(labelText: "Feeding Capacity", border: OutlineInputBorder()),
-              items: capacityOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedCapacity = val!),
-            ),
+            TextField(controller: streetController, decoration: const InputDecoration(labelText: "Street / Area / Society*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.map))),
             const SizedBox(height: 15),
-
-            DropdownButtonFormField<String>(
-              value: selectedReceiveTime,
-              decoration: const InputDecoration(labelText: "Best Drop-off Time", border: OutlineInputBorder()),
-              items: receiveTimes.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedReceiveTime = val!),
+            Row(
+              children: [
+                const Icon(Icons.location_on, size: 16, color: Colors.red),
+                const SizedBox(width: 5),
+                Text("City: $currentCity", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+                const Spacer(),
+                TextButton(onPressed: _autoFetchLocation, child: const Text("Refresh GPS"))
+              ],
             ),
             const SizedBox(height: 30),
-
             SizedBox(
-              width: double.infinity, height: 50,
+              width: double.infinity, height: 60,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 onPressed: isLoading ? null : saveProfile,
-                child: isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Save Location & Complete", style: TextStyle(fontSize: 18)),
+                child: isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("FINISH SETUP ✨", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
           ],

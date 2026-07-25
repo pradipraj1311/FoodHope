@@ -20,29 +20,9 @@ class DonorDashboard extends StatefulWidget {
 
 class _DonorDashboardState extends State<DonorDashboard> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
-  Map<String, dynamic>? userData;
-  bool isLoading = true;
   int _currentIndex = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchUserDetails();
-  }
-
-  Future<void> _fetchUserDetails() async {
-    if (currentUser != null) {
-      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).get();
-      if (mounted) {
-        setState(() {
-          userData = doc.data() as Map<String, dynamic>?;
-          isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _showCitySearchSheet() {
+  void _showCitySearchSheet(Map<String, dynamic> userData) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -50,113 +30,96 @@ class _DonorDashboardState extends State<DonorDashboard> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => DonorCitySearchSheet(
         currentUserUid: currentUser!.uid,
-        userLat: userData?['latitude'],
-        userLon: userData?['longitude'],
-        onCitySelected: (String newShortAddress) {
-          _fetchUserDetails();
-        },
+        userLat: userData['latitude'],
+        userLon: userData['longitude'],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.orange)));
+    if (currentUser == null) return const Scaffold(body: Center(child: Text("Please Login")));
 
-    // --- FIXED: Only ONE set of declarations ---
-    String building = userData?['exactAddress'] ?? '';
-    String street = userData?['streetName'] ?? '';
-    String displayTopLine = building.isNotEmpty ? building : (userData?['city'] ?? 'Set Location');
-    String displayBottomLine = street.isNotEmpty ? "$street, ${userData?['city'] ?? ''}" : (userData?['fullAddress'] ?? 'Tap to set exact location');
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.orange)));
+        }
+        
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Scaffold(body: Center(child: Text("User data not found")));
+        }
 
-    final List<Widget> pages = [
-      DonorHomeTab(userData: userData!, uid: currentUser!.uid),
-      DonorHistoryTab(uid: currentUser!.uid),
-      DonorProfileTab(userData: userData!, uid: currentUser!.uid, onProfileUpdated: _fetchUserDetails),
-    ];
+        final userData = snapshot.data!.data() as Map<String, dynamic>;
+        
+        String building = userData['exactAddress'] ?? '';
+        String street = userData['streetName'] ?? '';
+        String displayTopLine = building.isNotEmpty ? building : (userData['city'] ?? 'Set Location');
+        String displayBottomLine = street.isNotEmpty ? "$street, ${userData['city'] ?? ''}" : (userData['fullAddress'] ?? 'Tap to set exact location');
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: GestureDetector(
-          onTap: _showCitySearchSheet,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        final List<Widget> pages = [
+          DonorHomeTab(userData: userData, uid: currentUser!.uid),
+          DonorHistoryTab(uid: currentUser!.uid),
+          DonorProfileTab(userData: userData, uid: currentUser!.uid, onProfileUpdated: () {}),
+        ];
+
+        return Scaffold(
+          backgroundColor: Colors.grey.shade50,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            automaticallyImplyLeading: false, // REMOVED BACK ARROW
+            title: GestureDetector(
+              onTap: () => _showCitySearchSheet(userData),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.location_on, size: 22, color: Colors.orange.shade700),
-                  const SizedBox(width: 4),
-                  Text(displayTopLine, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
-                  const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 22, color: Colors.orange.shade700),
+                      const SizedBox(width: 4),
+                      Text(displayTopLine, style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold)),
+                      const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.black87),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 26.0),
+                    child: Text(displayBottomLine, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
+                  ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.only(left: 26.0),
-                child: Text(displayBottomLine, style: TextStyle(color: Colors.grey.shade600, fontSize: 13), overflow: TextOverflow.ellipsis),
-              ),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.emoji_events, color: Colors.amber),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CityLeaderboardScreen(currentUserUid: currentUser!.uid, userCity: userData['city'] ?? 'All'))),
+              )
             ],
           ),
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-            decoration: BoxDecoration(
-              color: Colors.amber.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.amber.shade200),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
-              tooltip: "City Leaderboard",
-              onPressed: () {
-                if (userData != null && currentUser != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CityLeaderboardScreen(
-                        currentUserUid: currentUser!.uid,
-                        userCity: userData?['city'] ?? 'Nadiad',
-                      ),
-                    ),
-                  );
-                }
-              },
-            ),
+          body: pages[_currentIndex],
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: (index) => setState(() => _currentIndex = index),
+            selectedItemColor: Colors.orange.shade700,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.storefront), label: "Post Food"),
+              BottomNavigationBarItem(icon: Icon(Icons.history), label: "Impact"),
+              BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+            ],
           ),
-        ],
-      ),
-      body: pages[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          selectedItemColor: Colors.orange.shade700,
-          unselectedItemColor: Colors.grey,
-          backgroundColor: Colors.white,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.storefront), label: "Post Food"),
-            BottomNavigationBarItem(icon: Icon(Icons.history), label: "Impact"),
-            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-// --- SEARCH SHEET STAYS EXACTLY THE SAME ---
 class DonorCitySearchSheet extends StatefulWidget {
   final String currentUserUid;
   final double? userLat;
   final double? userLon;
-  final Function(String) onCitySelected;
 
-  const DonorCitySearchSheet({super.key, required this.currentUserUid, this.userLat, this.userLon, required this.onCitySelected});
+  const DonorCitySearchSheet({super.key, required this.currentUserUid, this.userLat, this.userLon});
 
   @override
   State<DonorCitySearchSheet> createState() => _DonorCitySearchSheetState();
@@ -165,142 +128,62 @@ class DonorCitySearchSheet extends StatefulWidget {
 class _DonorCitySearchSheetState extends State<DonorCitySearchSheet> {
   List<dynamic> searchResults = [];
   bool isSearching = false;
-  final List<String> hintCities = ['Vadodara', 'Nadiad', 'Ahmedabad', 'Surat', 'Rajkot'];
-  int currentHintIndex = 0;
-  Timer? _hintTimer;
   Timer? _debounceTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _hintTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (mounted) setState(() => currentHintIndex = (currentHintIndex + 1) % hintCities.length);
-    });
-  }
-
-  @override
-  void dispose() {
-    _hintTimer?.cancel();
-    _debounceTimer?.cancel();
-    super.dispose();
-  }
 
   void _onSearchChanged(String query) {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    if (query.length < 3) {
-      setState(() { searchResults = []; isSearching = false; });
-      return;
-    }
+    if (query.length < 3) return;
     setState(() => isSearching = true);
 
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
       try {
-        String latLonQuery = (widget.userLat != null && widget.userLon != null) ? "&lat=${widget.userLat}&lon=${widget.userLon}" : "";
-        final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&addressdetails=1&limit=8&countrycodes=in$latLonQuery');
-        final response = await http.get(url, headers: {'User-Agent': 'FoodHopeApp/1.0'});
+        final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&addressdetails=1&limit=5&countrycodes=in');
+        final response = await http.get(url, headers: {'User-Agent': 'FoodHope/1.0'});
         if (response.statusCode == 200) {
           if (mounted) setState(() => searchResults = json.decode(response.body));
         }
       } catch (e) {
-        print("Search Error: $e");
+        print(e);
       } finally {
         if (mounted) setState(() => isSearching = false);
       }
     });
   }
 
-  Future<void> _useCurrentLocation() async {
-    setState(() => isSearching = true);
-    try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
-      Placemark place = placemarks[0];
-
-      String exactCity = place.locality ?? place.subAdministrativeArea ?? "Unknown City";
-      String shortAddress = "${place.street ?? place.subLocality ?? exactCity}, $exactCity";
-      String fullAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}, ${place.postalCode}";
-      fullAddress = fullAddress.replaceAll(RegExp(r'null, | ,'), '').trim();
-
-      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
-        'latitude': position.latitude, 'longitude': position.longitude, 'city': exactCity,
-        'shortAddress': shortAddress, 'fullAddress': fullAddress,
-      });
-
-      widget.onCitySelected(shortAddress);
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location updated!")));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not fetch Location.")));
-    } finally {
-      if (mounted) setState(() => isSearching = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 40),
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.85,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Select Business Location", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 15),
-            TextField(
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: "Search '${hintCities[currentHintIndex]}'...",
-                prefixIcon: const Icon(Icons.search, color: Colors.orange),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                filled: true,
-                fillColor: Colors.grey.shade200,
-              ),
-              onChanged: _onSearchChanged,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            decoration: const InputDecoration(hintText: "Search Society, Road, or Area...", prefixIcon: Icon(Icons.search)),
+            onChanged: _onSearchChanged,
+          ),
+          if (isSearching) const LinearProgressIndicator(),
+          SizedBox(
+            height: 300,
+            child: ListView.builder(
+              itemCount: searchResults.length,
+              itemBuilder: (context, index) {
+                var place = searchResults[index];
+                return ListTile(
+                  title: Text(place['display_name'], style: const TextStyle(fontSize: 13)),
+                  onTap: () async {
+                    await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
+                      'fullAddress': place['display_name'],
+                      'city': place['address']['city'] ?? place['address']['town'] ?? 'City',
+                      'latitude': double.parse(place['lat']),
+                      'longitude': double.parse(place['lon']),
+                    });
+                    if (mounted) Navigator.pop(context);
+                  },
+                );
+              },
             ),
-            const SizedBox(height: 15),
-            ListTile(
-              contentPadding: EdgeInsets.zero, leading: const Icon(Icons.my_location, color: Colors.red),
-              title: const Text("Use current location", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
-              onTap: _useCurrentLocation,
-            ),
-            const Divider(thickness: 1),
-            if (isSearching) const Center(child: CircularProgressIndicator(color: Colors.orange)),
-            Expanded(
-              child: ListView.builder(
-                itemCount: searchResults.length,
-                itemBuilder: (context, index) {
-                  var place = searchResults[index];
-                  String displayName = place['display_name'] ?? '';
-                  String exactCity = place['address']?['city'] ?? place['address']?['town'] ?? place['address']?['county'] ?? 'Unknown';
-                  List<String> addressParts = displayName.split(', ');
-                  String primaryText = addressParts.isNotEmpty ? addressParts[0] : exactCity;
-                  String secondaryText = addressParts.length > 1 ? addressParts.sublist(1).join(', ') : displayName;
-
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero, leading: const Icon(Icons.location_on_outlined, color: Colors.grey),
-                    title: Text(primaryText, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(secondaryText, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                    onTap: () async {
-                      await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).update({
-                        'city': exactCity, 'shortAddress': "$primaryText, $exactCity", 'fullAddress': displayName,
-                        'latitude': double.parse(place['lat']), 'longitude': double.parse(place['lon']),
-                      });
-                      widget.onCitySelected(primaryText);
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location saved!")));
-                      }
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import '../login_screen.dart';
+import '../landing_screen.dart';
+import '../gamification/impact_wrapped_screen.dart';
 import 'dart:convert';
 
 class NgoProfileTab extends StatefulWidget {
@@ -21,7 +23,7 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
-    if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen(role: 'NGO')), (route) => false);
+    if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LandingScreen()), (route) => false);
   }
 
   Future<void> _pickAndUploadImage() async {
@@ -31,14 +33,10 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
 
       if (pickedFile != null) {
         setState(() => isUploading = true);
-
-        // --- BASE64 FREE HACK ---
         List<int> imageBytes = await pickedFile.readAsBytes();
         String base64Image = base64Encode(imageBytes);
-
         await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': base64Image});
         widget.onProfileUpdated();
-
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Photo Updated!")));
       }
     } catch (e) {
@@ -48,15 +46,16 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
     }
   }
 
-  Widget _requiredLabel(String text) {
-    return Text.rich(TextSpan(text: text, style: TextStyle(color: Colors.grey.shade700, fontSize: 16), children: const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]));
+  Future<void> _removeProfileImage() async {
+    setState(() => isUploading = true);
+    await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': ''});
+    widget.onProfileUpdated();
+    setState(() => isUploading = false);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo Removed")));
   }
 
-  Widget _buildDistributorBadge(String type) {
-    if (type == 'NGO') return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.green.shade300)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.verified, size: 14, color: Colors.green.shade700), const SizedBox(width: 4), Text("Verified NGO", style: TextStyle(color: Colors.green.shade800, fontSize: 12, fontWeight: FontWeight.bold))]));
-    if (type == 'Volunteer Group') return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.shade300)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.star, size: 14, color: Colors.blue.shade700), const SizedBox(width: 4), Text("Community Verified Group", style: TextStyle(color: Colors.blue.shade800, fontSize: 12, fontWeight: FontWeight.bold))]));
-    if (type == 'Religious Trust') return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.orange.shade300)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.temple_hindu, size: 14, color: Colors.orange.shade700), const SizedBox(width: 4), Text("Religious Trust Verified", style: TextStyle(color: Colors.orange.shade800, fontSize: 12, fontWeight: FontWeight.bold))]));
-    return const SizedBox.shrink();
+  Widget _requiredLabel(String text) {
+    return Text.rich(TextSpan(text: text, style: TextStyle(color: Colors.grey.shade700, fontSize: 16), children: const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]));
   }
 
   void _showEditProfileSheet() {
@@ -64,22 +63,6 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
     TextEditingController exactAddressController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
     TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
-    TextEditingController landmarkController = TextEditingController(text: widget.userData['landmark'] ?? '');
-    TextEditingController cert80gController = TextEditingController(text: widget.userData['cert80g'] ?? '');
-    TextEditingController websiteController = TextEditingController(text: widget.userData['website'] ?? '');
-    TextEditingController socialMediaController = TextEditingController(text: widget.userData['socialMedia'] ?? '');
-    TextEditingController gstController = TextEditingController(text: widget.userData['gstDetails'] ?? '');
-
-    List<String> typeOptions = ['NGO', 'Volunteer Group', 'Religious Trust'];
-    String distributorType = widget.userData['distributorType'] ?? typeOptions[0]; if (!typeOptions.contains(distributorType)) distributorType = typeOptions[0];
-    List<String> capacityOptions = ['Under 50 meals', '50 - 100 meals', '100 - 300 meals', '300 - 500 meals', '500+ meals'];
-    String selectedCapacity = widget.userData['storageCapacity'] ?? capacityOptions[1]; if (!capacityOptions.contains(selectedCapacity)) selectedCapacity = capacityOptions[1];
-    List<String> foodPrefOptions = ['Any Food (Veg & Non-Veg)', 'Veg Only', 'Non-Veg Only'];
-    String selectedFoodPref = widget.userData['foodPreference'] ?? foodPrefOptions[0]; if (!foodPrefOptions.contains(selectedFoodPref)) selectedFoodPref = foodPrefOptions[0];
-    List<String> volOptions = ['1-5 members', '5-20 members', '20-50 members', '50+ members'];
-    String volunteerCount = widget.userData['volunteerCount'] ?? volOptions[0]; if (!volOptions.contains(volunteerCount)) volunteerCount = volOptions[0];
-
-    bool hasColdStorage = widget.userData['hasColdStorage'] is bool ? widget.userData['hasColdStorage'] : false;
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -92,28 +75,16 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Distributor Profile Setup", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.teal)), const SizedBox(height: 15),
-                    DropdownButtonFormField<String>(value: distributorType, decoration: InputDecoration(label: _requiredLabel("Organization Type"), border: const OutlineInputBorder()), items: typeOptions.map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(), onChanged: (val) => setModalState(() => distributorType = val!)), const SizedBox(height: 15),
-                    TextField(controller: nameController, decoration: InputDecoration(label: _requiredLabel("Organization / Trust Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(label: _requiredLabel("Coordinator Phone Number"), border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    if (distributorType == 'NGO') ...[TextField(controller: cert80gController, decoration: const InputDecoration(labelText: "80G / 12A Details (Optional)", border: OutlineInputBorder())), const SizedBox(height: 10), TextField(controller: websiteController, decoration: const InputDecoration(labelText: "Website / Social Links", border: OutlineInputBorder()))] else if (distributorType == 'Volunteer Group') ...[TextField(controller: socialMediaController, decoration: InputDecoration(label: _requiredLabel("Social Media / Group Page Link"), border: const OutlineInputBorder()))] else if (distributorType == 'Religious Trust') ...[TextField(controller: gstController, decoration: const InputDecoration(labelText: "GST / Donation Receipt Book No. (Optional)", border: OutlineInputBorder()))],
-                    const Divider(height: 25, thickness: 2), const Text("Exact Location Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)), const SizedBox(height: 15),
-                    TextField(controller: exactAddressController, decoration: InputDecoration(label: _requiredLabel("Flat / Building / Trust Name"), hintText: "e.g., L.S. Boys Hostel", border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: streetController, decoration: InputDecoration(label: _requiredLabel("Street / Road / Area"), hintText: "e.g., Uttarsanda Road", border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: landmarkController, decoration: const InputDecoration(labelText: "Nearby Landmark (Optional)", border: OutlineInputBorder())),
-                    const Divider(height: 25, thickness: 2), const Text("Capacity & Logistics", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)), const SizedBox(height: 15),
-                    DropdownButtonFormField<String>(value: volunteerCount, decoration: InputDecoration(label: _requiredLabel("Active Volunteers/Members"), border: const OutlineInputBorder()), items: volOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(), onChanged: (val) => setModalState(() => volunteerCount = val!)), const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(value: selectedCapacity, decoration: InputDecoration(label: _requiredLabel("Storage / Feeding Capacity"), border: const OutlineInputBorder()), items: capacityOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(), onChanged: (val) => setModalState(() => selectedCapacity = val!)), const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(value: selectedFoodPref, decoration: InputDecoration(label: _requiredLabel("Food Type Accepted"), border: const OutlineInputBorder()), items: foodPrefOptions.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(), onChanged: (val) => setModalState(() => selectedFoodPref = val!)), const SizedBox(height: 10),
-                    SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text("Do you have Cold Storage (Fridges)?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), value: hasColdStorage, onChanged: (val) => setModalState(() => hasColdStorage = val), activeColor: Colors.teal),
-                    const SizedBox(height: 25),
+                    const Text("Edit Hub Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.teal)), const SizedBox(height: 15),
+                    TextField(controller: nameController, decoration: InputDecoration(label: _requiredLabel("Organization Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
+                    TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(label: _requiredLabel("Contact Number"), border: const OutlineInputBorder())), const SizedBox(height: 10),
+                    TextField(controller: exactAddressController, decoration: InputDecoration(label: _requiredLabel("Building Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
+                    TextField(controller: streetController, decoration: InputDecoration(label: _requiredLabel("Street / Road"), border: const OutlineInputBorder())), const SizedBox(height: 25),
                     SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white), onPressed: () async {
-                      if (nameController.text.isEmpty || phoneController.text.isEmpty || exactAddressController.text.isEmpty || streetController.text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields!"))); return; }
-                      if (distributorType == 'Volunteer Group' && socialMediaController.text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Social Media link required for Volunteer Groups!"))); return; }
-                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'distributorType': distributorType, 'distributorName': nameController.text.trim(), 'contact': phoneController.text.trim(), 'exactAddress': exactAddressController.text.trim(), 'streetName': streetController.text.trim(), 'landmark': landmarkController.text.trim(), 'cert80g': cert80gController.text.trim(), 'website': websiteController.text.trim(), 'socialMedia': socialMediaController.text.trim(), 'gstDetails': gstController.text.trim(), 'volunteerCount': volunteerCount, 'storageCapacity': selectedCapacity, 'foodPreference': selectedFoodPref, 'hasColdStorage': hasColdStorage, 'isVerified': true});
+                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'distributorName': nameController.text.trim(), 'contact': phoneController.text.trim(), 'exactAddress': exactAddressController.text.trim(), 'streetName': streetController.text.trim()});
                       widget.onProfileUpdated();
                       if (mounted) Navigator.pop(context);
-                    }, child: const Text("Save & Verify Profile", style: TextStyle(fontSize: 18)))), const SizedBox(height: 20),
+                    }, child: const Text("Save Changes"))), const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -127,10 +98,6 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
   @override
   Widget build(BuildContext context) {
     String profileUrl = widget.userData['profileImageUrl'] ?? '';
-    String currentType = widget.userData['distributorType'] ?? 'NGO';
-    String displayLocation = "${widget.userData['exactAddress'] ?? 'Building Not Set'}\n${widget.userData['streetName'] ?? 'Street Not Set'}${widget.userData['landmark']?.isNotEmpty == true ? '\nLandmark: ${widget.userData['landmark']}' : ''}";
-
-    // --- SAFE IMAGE DECODING ---
     ImageProvider? profileImage;
     if (profileUrl.isNotEmpty) {
       try { profileImage = MemoryImage(base64Decode(profileUrl)); }
@@ -143,30 +110,68 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              onTap: _pickAndUploadImage,
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  CircleAvatar(radius: 45, backgroundColor: Colors.teal.shade100, backgroundImage: profileImage, child: profileImage == null ? const Icon(Icons.corporate_fare, size: 40, color: Colors.teal) : null),
-                  if (isUploading) const CircularProgressIndicator(color: Colors.teal),
-                  if (!isUploading) CircleAvatar(radius: 15, backgroundColor: Colors.white, child: Icon(Icons.camera_alt, size: 18, color: Colors.grey.shade800)),
-                ],
-              ),
+            Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                GestureDetector(
+                  onTap: _pickAndUploadImage,
+                  child: CircleAvatar(radius: 45, backgroundColor: Colors.teal.shade100, backgroundImage: profileImage, child: profileImage == null ? const Icon(Icons.corporate_fare, size: 40, color: Colors.teal) : null),
+                ),
+                if (profileUrl.isNotEmpty)
+                  Positioned(
+                    top: 0, right: 0,
+                    child: GestureDetector(
+                      onTap: _removeProfileImage,
+                      child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)),
+                    ),
+                  ),
+                if (isUploading) const CircularProgressIndicator(color: Colors.teal),
+              ],
             ),
             ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200, foregroundColor: Colors.black87, elevation: 0), onPressed: _showEditProfileSheet, icon: const Icon(Icons.edit, size: 18), label: const Text("Edit Profile"))
           ],
         ),
         const SizedBox(height: 20),
-        if (widget.userData['isVerified'] == true) Align(alignment: Alignment.centerLeft, child: _buildDistributorBadge(currentType)),
-        const SizedBox(height: 10), Text(widget.userData['distributorName'] ?? widget.userData['ngoName'] ?? 'Distributor Name', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)), const SizedBox(height: 30),
+        
+        GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ImpactWrappedScreen(userData: widget.userData))),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF1a2a6c), Color(0xFFb21f1f)]),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.white, size: 30),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Impact Wrapped 2026", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+                      Text("See your NGO's vibe check ✨", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+        Text(widget.userData['distributorName'] ?? widget.userData['ngoName'] ?? 'Hub Name', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)),
+        const SizedBox(height: 30),
         Card(
           elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             children: [
-              ListTile(leading: const Icon(Icons.inventory_2, color: Colors.teal), title: const Text("Storage Capacity"), trailing: Text(widget.userData['storageCapacity'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))), const Divider(height: 0),
-              ListTile(leading: const Icon(Icons.people, color: Colors.blue), title: const Text("Volunteers"), trailing: Text(widget.userData['volunteerCount'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))), const Divider(height: 0),
-              ListTile(leading: const Icon(Icons.home, color: Colors.orange), title: const Text("Location Hub"), subtitle: Text(displayLocation, style: const TextStyle(fontWeight: FontWeight.bold))),
+              ListTile(leading: const Icon(Icons.inventory_2, color: Colors.teal), title: const Text("Capacity"), trailing: Text(widget.userData['storageCapacity'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+              const Divider(height: 0),
+              ListTile(leading: const Icon(Icons.home, color: Colors.orange), title: const Text("Location"), subtitle: Text("${widget.userData['exactAddress'] ?? 'Building'}\n${widget.userData['streetName'] ?? 'Street'}", style: const TextStyle(fontWeight: FontWeight.bold))),
             ],
           ),
         ),

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
+import '../gamification/squads_hub_screen.dart';
 
 class NgoHomeTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -12,77 +13,134 @@ class NgoHomeTab extends StatefulWidget {
 }
 
 class _NgoHomeTabState extends State<NgoHomeTab> {
-  bool isUploading = false;
+  bool isProcessing = false;
 
-  Future<void> _verifyWithCamera(BuildContext context, String donationId) async {
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: ImageSource.camera, imageQuality: 25);
-
-      if (pickedFile != null) {
-        setState(() => isUploading = true);
-
-        // --- BASE64 FREE HACK ---
-        List<int> imageBytes = await pickedFile.readAsBytes();
-        String base64Proof = base64Encode(imageBytes);
-
-        await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
-          'status': 'Completed',
-          'dropoffTime': DateTime.now(),
-          'photoProofUrl': base64Proof, // Save text string
-        });
-
-        await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
-          'totalDeliveriesReceived': FieldValue.increment(1)
-        });
-
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo Verified! Delivery Complete.")));
-      }
-    } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Camera Failed (Ensure permissions are granted): $e")));
-    } finally {
-      setState(() => isUploading = false);
+  // NGO accepts the volunteer's request
+  Future<void> _acceptIncomingRescue(String donationId) async {
+    setState(() => isProcessing = true);
+    await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
+      'status': 'En Route',
+    });
+    setState(() => isProcessing = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rescue Accepted! Volunteer notified."), backgroundColor: Colors.teal));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    double ngoLat = widget.userData['latitude'] ?? 0.0;
-    double ngoLon = widget.userData['longitude'] ?? 0.0;
+    double ngoLat = (widget.userData['latitude'] ?? 0.0).toDouble();
+    double ngoLon = (widget.userData['longitude'] ?? 0.0).toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(width: double.infinity, padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.teal.shade800), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Receiving Hub", style: TextStyle(color: Colors.white70, fontSize: 16)), const SizedBox(height: 5), Text(widget.userData['distributorName'] ?? widget.userData['ngoName'] ?? 'Hub Dashboard', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold))])),
-        const Padding(padding: EdgeInsets.all(16.0), child: Text("Incoming Food Rescues", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
-        if (isUploading) const LinearProgressIndicator(color: Colors.teal),
+        Container(
+          width: double.infinity, 
+          padding: const EdgeInsets.all(20), 
+          decoration: BoxDecoration(color: Colors.teal.shade800), 
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  children: [
+                    const Text("Receiving Hub", style: TextStyle(color: Colors.white70, fontSize: 16)), 
+                    const SizedBox(height: 5), 
+                    Text(
+                      widget.userData['distributorName'] ?? widget.userData['ngoName'] ?? 'Hub Dashboard', 
+                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  ]
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.groups, color: Colors.greenAccent, size: 30),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => SquadsHubScreen(userData: widget.userData, uid: widget.uid))
+                  );
+                },
+              ),
+            ],
+          )
+        ),
+        const Padding(padding: EdgeInsets.all(16.0), child: Text("Incoming Food Requests", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
+        
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('donations').where('selectedNgoId', isEqualTo: widget.uid).where('status', isEqualTo: 'En Route').snapshots(),
+            stream: FirebaseFirestore.instance.collection('donations')
+                .where('selectedNgoId', isEqualTo: widget.uid)
+                .where('status', whereIn: ['NGO Requested', 'En Route'])
+                .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.teal));
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.radar, size: 60, color: Colors.grey.shade300), const SizedBox(height: 15), const Text("No confirmed deliveries are currently heading your way.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))]));
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.radar, size: 60, color: Colors.grey.shade300), const SizedBox(height: 15), const Text("No active requests.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))]));
 
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: snapshot.data!.docs.length,
                 itemBuilder: (context, index) {
                   var post = snapshot.data!.docs[index]; Map<String, dynamic> postData = post.data() as Map<String, dynamic>;
-                  double vLat = postData['volunteerLatitude'] ?? 0.0; double vLon = postData['volunteerLongitude'] ?? 0.0;
+                  String status = postData['status'] ?? '';
+                  bool isRequested = status == 'NGO Requested';
+                  
+                  double vLat = (postData['volunteerLatitude'] ?? 0.0).toDouble(); 
+                  double vLon = (postData['volunteerLongitude'] ?? 0.0).toDouble();
                   String distStr = "Calculating...";
                   if (ngoLat != 0.0 && vLat != 0.0) { distStr = "${(Geolocator.distanceBetween(ngoLat, ngoLon, vLat, vLon) / 1000).toStringAsFixed(1)} km away"; }
 
                   return Card(
-                    elevation: 3, shadowColor: Colors.teal.withOpacity(0.2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.teal.shade100)), margin: const EdgeInsets.only(bottom: 15),
+                    elevation: 3, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), margin: const EdgeInsets.only(bottom: 15),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [Icon(Icons.check_circle, color: Colors.green.shade700, size: 20), const SizedBox(width: 8), const Text("Ready for Receipt", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14))]), Text(postData['foodState'] ?? 'Food', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))]),
-                          const Divider(height: 20), Text("📦 ${postData['foodItem']}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), const SizedBox(height: 5), Text("Feeds approx ${postData['quantity']} people", style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w600)), const SizedBox(height: 15),
-                          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Volunteer Details:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)), const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [const Icon(Icons.person, size: 16, color: Colors.teal), const SizedBox(width: 8), Text(postData['volunteerName'] ?? 'Unknown')]), Text(distStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87))]), const SizedBox(height: 4), Row(children: [const Icon(Icons.phone, size: 16, color: Colors.teal), const SizedBox(width: 8), Text(postData['volunteerContact'] ?? 'Phone hidden')])])),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(color: isRequested ? Colors.orange.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(6)),
+                                child: Text(isRequested ? "PENDING REQUEST" : "EN ROUTE", style: TextStyle(color: isRequested ? Colors.orange.shade800 : Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
+                              ),
+                              Text(postData['category'] ?? 'Food', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
                           const SizedBox(height: 15),
-                          SizedBox(width: double.infinity, height: 45, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: isUploading ? null : () => _verifyWithCamera(context, post.id), icon: const Icon(Icons.camera_alt), label: const Text("Take Photo to Confirm Delivery", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))))
+                          Text("📦 ${postData['foodItem']}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text("Quantity: ${postData['quantity']} meals", style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                          const Divider(height: 30),
+                          Row(
+                            children: [
+                              const CircleAvatar(radius: 15, child: Icon(Icons.person, size: 18)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(postData['volunteerName'] ?? 'Volunteer', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    Text(distStr, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          if (isRequested)
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                                onPressed: isProcessing ? null : () => _acceptIncomingRescue(post.id),
+                                child: const Text("RECEIVE THIS FOOD", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                              ),
+                            )
+                          else
+                            const Center(child: Text("Volunteer is arriving... Ask for photo on delivery!", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))),
                         ],
                       ),
                     ),

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 
-// --- FIXED IMPORTS BASED ON YOUR FOLDER STRUCTURE ---
-import 'widgets/active_delivery_card.dart'; // <-- આ પાથ સુધારી દીધો છે!
+import 'widgets/active_delivery_card.dart';
 import 'widgets/available_donation_card.dart';
 import '../gamification/city_leaderboard_screen.dart';
+import '../gamification/squads_hub_screen.dart';
 
 class VolunteerHomeTab extends StatelessWidget {
   final Map<String, dynamic> userData;
@@ -14,14 +15,16 @@ class VolunteerHomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Grab the volunteer's location (defaults to 0.0 if not yet set)
-    double vLat = userData['latitude'] ?? 0.0;
-    double vLon = userData['longitude'] ?? 0.0;
+    // Current Volunteer Location (Double cast to prevent 0.0 errors)
+    double vLat = (userData['latitude'] ?? 0.0).toDouble();
+    double vLon = (userData['longitude'] ?? 0.0).toDouble();
+    String vehicleType = userData['vehicleType'] ?? 'Scooter / Motorcycle';
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SafeArea(
         child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -29,7 +32,6 @@ class VolunteerHomeTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // --- WELCOME HEADER & LEADERBOARD BUTTON ---
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -43,24 +45,35 @@ class VolunteerHomeTab extends StatelessWidget {
                             const Text("Ready to rescue some food today?", style: TextStyle(color: Colors.grey, fontSize: 14)),
                           ],
                         ),
-                        // THE LEADERBOARD BUTTON
-                        IconButton(
-                          icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 32),
-                          onPressed: () {
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => CityLeaderboardScreen(
-                                    currentUserUid: uid,
-                                    userCity: userData['city'] ?? 'All'
-                                ))
-                            );
-                          },
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.shield, color: Colors.blueAccent, size: 28),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => SquadsHubScreen(userData: userData, uid: uid))
+                                );
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 32),
+                              onPressed: () {
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => CityLeaderboardScreen(
+                                        currentUserUid: uid,
+                                        userCity: userData['city'] ?? 'All'
+                                    ))
+                                );
+                              },
+                            ),
+                          ],
                         )
                       ],
                     ),
                     const SizedBox(height: 25),
 
-                    // --- 1. THE ACTIVE DELIVERY TRACKER ---
                     ActiveDeliveryCard(volunteerUid: uid),
 
                     const SizedBox(height: 10),
@@ -71,8 +84,8 @@ class VolunteerHomeTab extends StatelessWidget {
               ),
             ),
 
-            // --- 2. THE LIST OF AVAILABLE DONATIONS ---
             StreamBuilder<QuerySnapshot>(
+              // FIXED: Single field query to bypass Firestore index requirement
               stream: FirebaseFirestore.instance
                   .collection('donations')
                   .where('status', isEqualTo: 'Available')
@@ -83,18 +96,51 @@ class VolunteerHomeTab extends StatelessWidget {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return SliverToBoxAdapter(
+                  return const SliverToBoxAdapter(
                     child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(height: 50),
-                          Icon(Icons.volunteer_activism, size: 80, color: Colors.grey.shade200),
-                          const SizedBox(height: 15),
-                          Text("No active rescues nearby right now.", style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-                        ],
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 50),
+                        child: Text("No active rescues nearby right now.", style: TextStyle(color: Colors.grey, fontSize: 16)),
                       ),
                     ),
+                  );
+                }
+
+                // Client-side filtering for Expiry and Ranking by Distance
+                List<DocumentSnapshot> allDocs = snapshot.data!.docs;
+                DateTime now = DateTime.now();
+
+                // 1. Filter out expired food
+                List<DocumentSnapshot> freshDocs = allDocs.where((doc) {
+                  var data = doc.data() as Map<String, dynamic>;
+                  if (data['exactExpiryTime'] == null) return false;
+                  DateTime expiry = (data['exactExpiryTime'] as Timestamp).toDate();
+                  return expiry.isAfter(now);
+                }).toList();
+
+                // 2. Rank by Distance (Closest first)
+                freshDocs.sort((a, b) {
+                  var dataA = a.data() as Map<String, dynamic>;
+                  var dataB = b.data() as Map<String, dynamic>;
+                  
+                  double latA = (dataA['latitude'] ?? 0.0).toDouble();
+                  double lonA = (dataA['longitude'] ?? 0.0).toDouble();
+                  double latB = (dataB['latitude'] ?? 0.0).toDouble();
+                  double lonB = (dataB['longitude'] ?? 0.0).toDouble();
+
+                  double distA = (vLat != 0 && vLon != 0 && latA != 0 && lonA != 0) 
+                      ? Geolocator.distanceBetween(vLat, vLon, latA, lonA) 
+                      : 999999;
+                  double distB = (vLat != 0 && vLon != 0 && latB != 0 && lonB != 0) 
+                      ? Geolocator.distanceBetween(vLat, vLon, latB, lonB) 
+                      : 999999;
+                  
+                  return distA.compareTo(distB);
+                });
+
+                if (freshDocs.isEmpty) {
+                  return const SliverToBoxAdapter(
+                    child: Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No fresh food available right now.", style: TextStyle(color: Colors.grey)))),
                   );
                 }
 
@@ -103,16 +149,17 @@ class VolunteerHomeTab extends StatelessWidget {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                        var doc = snapshot.data!.docs[index];
+                        var doc = freshDocs[index];
                         return AvailableDonationCard(
                           donation: doc.data() as Map<String, dynamic>,
                           donationId: doc.id,
                           vLat: vLat,
                           vLon: vLon,
                           volunteerUid: uid,
+                          vehicleType: vehicleType,
                         );
                       },
-                      childCount: snapshot.data!.docs.length,
+                      childCount: freshDocs.length,
                     ),
                   ),
                 );

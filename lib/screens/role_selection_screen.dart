@@ -4,8 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'login_screen.dart';
 import 'volunteer_profile_setup.dart';
-import 'ngo_dashboard.dart';
-import 'donor_dashboard.dart';
+import 'ngo_profile_setup.dart';
+import 'donor_profile_setup.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -33,6 +33,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         'role': role,
         'createdAt': FieldValue.serverTimestamp(),
         'email': user.email ?? '',
+        'isProfileComplete': false,
       }, SetOptions(merge: true));
 
       if (!context.mounted) return;
@@ -40,9 +41,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       if (role == 'Volunteer') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VolunteerProfileSetup()));
       } else if (role == 'NGO') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const NgoDashboard()));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const NgoProfileSetup()));
       } else if (role == 'Donor') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DonorDashboard()));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DonorProfileSetup()));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -131,21 +132,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- BACK BUTTON & LANGUAGE SELECTOR ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // BACK BUTTON
                   IconButton(
                     icon: const Icon(Icons.arrow_back_ios, color: Colors.black87),
                     onPressed: () {
-                      // Go back to login or completely close the app if nothing to go back to
                       if (Navigator.canPop(context)) {
                         Navigator.pop(context);
                       }
                     },
                   ),
-                  // LANGUAGE BUTTON
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(color: Colors.green.shade50, border: Border.all(color: Colors.green.shade200, width: 1.5), borderRadius: BorderRadius.circular(20)),
@@ -166,7 +163,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
               Text("FoodHope", style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: Colors.green.shade800, letterSpacing: -1.0)),
               const SizedBox(height: 12),
-              const Text("Help save surplus food and feed people near you.", style: TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.w500)),
+              const Text("Choose your role to get started.", style: TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.w500)),
               const SizedBox(height: 24),
 
               Wrap(
@@ -185,12 +182,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               ),
 
               _buildRoleCard(
-                title: "I am a Volunteer", subtitle: "Pick up and deliver food. Become a Verified Volunteer on our platform.", badgeText: "Level up & climb the State ranks",
+                title: "I am a Volunteer", subtitle: "Pick up and deliver food. Become a Verified Volunteer.", badgeText: "Level up & save lives",
                 badgeIcon: Icons.star, mainIcon: Icons.electric_bike, themeColor: Colors.green.shade700, onTap: () => _selectRole(context, "Volunteer"),
               ),
 
               _buildRoleCard(
-                title: "I Distribute Food", subtitle: "NGOs, Volunteer Groups, and Trusts that feed the needy.", badgeText: "Build trust & grow impact",
+                title: "I Distribute Food", subtitle: "NGOs and trusts that feed the needy.", badgeText: "Build trust & grow impact",
                 badgeIcon: Icons.favorite, mainIcon: Icons.storefront, themeColor: Colors.teal.shade700, onTap: () => _selectRole(context, "NGO"),
               ),
             ],

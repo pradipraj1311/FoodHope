@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import '../login_screen.dart';
+import '../landing_screen.dart';
+import '../gamification/impact_wrapped_screen.dart';
 import 'dart:convert';
 
 class DonorProfileTab extends StatefulWidget {
@@ -21,24 +23,20 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
-    if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen(role: 'Donor')), (route) => false);
+    if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LandingScreen()), (route) => false);
   }
 
   Future<void> _pickAndUploadImage() async {
     try {
       final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 25); // Low quality for small string
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 25);
 
       if (pickedFile != null) {
         setState(() => isUploading = true);
-
-        // --- BASE64 FREE HACK ---
         List<int> imageBytes = await pickedFile.readAsBytes();
         String base64Image = base64Encode(imageBytes);
-
         await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': base64Image});
         widget.onProfileUpdated();
-
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Logo Updated!")));
       }
     } catch (e) {
@@ -46,6 +44,14 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
     } finally {
       setState(() => isUploading = false);
     }
+  }
+
+  Future<void> _removeProfileImage() async {
+    setState(() => isUploading = true);
+    await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': ''});
+    widget.onProfileUpdated();
+    setState(() => isUploading = false);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo Removed")));
   }
 
   Widget _requiredLabel(String text) {
@@ -63,14 +69,9 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
     TextEditingController exactAddressController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
     TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
-    TextEditingController landmarkController = TextEditingController(text: widget.userData['landmark'] ?? '');
-
-    String donorType = widget.userData['donorType'] ?? 'Restaurant';
-    String surplusFrequency = widget.userData['surplusFrequency'] ?? 'Occasional / Unpredictable';
-    String selectedPickup = widget.userData['pickupInstructions'] ?? 'Hand to front desk / reception';
-
-    List<String> pickupOptions = ['Hand to front desk / reception', 'Call upon arrival, I will bring it out', 'Pick up from back door / kitchen', 'Self-pickup from designated counter', 'Other (Call me for details)'];
-    if (!pickupOptions.contains(selectedPickup)) selectedPickup = pickupOptions[0];
+    
+    String selectedDonorType = widget.userData['donorType'] ?? 'Restaurant';
+    final List<String> donorTypes = ['Restaurant', 'Hotel', 'Hostel Mess', 'Event / Wedding', 'Supermarket', 'Individual / Other'];
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -87,22 +88,33 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                     const Text("Edit Business Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 15),
                     TextField(controller: businessNameController, decoration: InputDecoration(label: _requiredLabel("Business/Entity Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
                     TextField(controller: contactNameController, decoration: InputDecoration(label: _requiredLabel("Primary Contact Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(label: _requiredLabel("Phone Number (For Volunteers)"), border: const OutlineInputBorder())),
+                    TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(label: _requiredLabel("Phone Number"), border: const OutlineInputBorder())),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedDonorType,
+                      decoration: const InputDecoration(labelText: "Business Category*", border: OutlineInputBorder()),
+                      items: donorTypes.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
+                      onChanged: (val) => setModalState(() => selectedDonorType = val!),
+                    ),
                     const Divider(height: 25, thickness: 2),
-                    const Text("Exact Location Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)), const SizedBox(height: 15),
-                    TextField(controller: exactAddressController, decoration: InputDecoration(label: _requiredLabel("Flat / Building / Hostel Name"), hintText: "e.g., LS Boys Hostel, L Complex", border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: streetController, decoration: InputDecoration(label: _requiredLabel("Street / Road / Area"), hintText: "e.g., Uttarsanda Road, Piplag", border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: landmarkController, decoration: const InputDecoration(labelText: "Nearby Landmark (Optional)", border: OutlineInputBorder())), const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(value: selectedPickup, decoration: InputDecoration(label: _requiredLabel("Default Pickup Instructions"), border: const OutlineInputBorder()), items: pickupOptions.map((val) => DropdownMenuItem(value: val, child: Text(val, overflow: TextOverflow.ellipsis))).toList(), onChanged: (val) => setModalState(() => selectedPickup = val!)),
-                    const Divider(height: 25, thickness: 2),
-                    DropdownButtonFormField<String>(value: donorType, decoration: InputDecoration(label: _requiredLabel("Business Type"), border: const OutlineInputBorder()), items: ['Restaurant', 'Hotel', 'Event / Wedding', 'Hostel Mess', 'Supermarket', 'Trust / NGO', 'Individual'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(), onChanged: (val) => setModalState(() => donorType = val!)), const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(value: surplusFrequency, decoration: InputDecoration(label: _requiredLabel("How often do you have extra food?"), border: const OutlineInputBorder()), items: ['Daily', 'Weekly', 'Occasional / Unpredictable', 'One-time Event'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(), onChanged: (val) => setModalState(() => surplusFrequency = val!)), const SizedBox(height: 25),
+                    TextField(controller: exactAddressController, decoration: InputDecoration(label: _requiredLabel("Building Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
+                    TextField(controller: streetController, decoration: InputDecoration(label: _requiredLabel("Street / Road"), border: const OutlineInputBorder())), const SizedBox(height: 25),
                     SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white), onPressed: () async {
-                      if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty || exactAddressController.text.isEmpty || streetController.text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields!"))); return; }
-                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'businessName': businessNameController.text.trim(), 'primaryContactName': contactNameController.text.trim(), 'contact': phoneController.text.trim(), 'exactAddress': exactAddressController.text.trim(), 'streetName': streetController.text.trim(), 'landmark': landmarkController.text.trim(), 'pickupInstructions': selectedPickup, 'donorType': donorType, 'surplusFrequency': surplusFrequency});
+                      if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty || exactAddressController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields")));
+                        return;
+                      }
+                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+                        'businessName': businessNameController.text.trim(), 
+                        'primaryContactName': contactNameController.text.trim(), 
+                        'contact': phoneController.text.trim(), 
+                        'exactAddress': exactAddressController.text.trim(), 
+                        'streetName': streetController.text.trim(), 
+                        'donorType': selectedDonorType
+                      });
                       widget.onProfileUpdated();
                       if (mounted) Navigator.pop(context);
-                    }, child: const Text("Save Changes", style: TextStyle(fontSize: 18)))), const SizedBox(height: 20),
+                    }, child: const Text("Save Changes"))), const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -117,14 +129,9 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
   Widget build(BuildContext context) {
     String profileUrl = widget.userData['profileImageUrl'] ?? '';
 
-    // --- SAFE IMAGE DECODING ---
     ImageProvider? profileImage;
     if (profileUrl.isNotEmpty) {
-      try {
-        profileImage = MemoryImage(base64Decode(profileUrl));
-      } catch (e) {
-        debugPrint("Error decoding image");
-      }
+      try { profileImage = MemoryImage(base64Decode(profileUrl)); } catch (e) { debugPrint("Error decoding image"); }
     }
 
     return ListView(
@@ -133,16 +140,23 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              onTap: _pickAndUploadImage,
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  CircleAvatar(radius: 45, backgroundColor: Colors.orange.shade100, backgroundImage: profileImage, child: profileImage == null ? const Icon(Icons.store, size: 40, color: Colors.orange) : null),
-                  if (isUploading) const CircularProgressIndicator(color: Colors.orange),
-                  if (!isUploading) CircleAvatar(radius: 15, backgroundColor: Colors.white, child: Icon(Icons.camera_alt, size: 18, color: Colors.grey.shade800)),
-                ],
-              ),
+            Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                GestureDetector(
+                  onTap: _pickAndUploadImage,
+                  child: CircleAvatar(radius: 45, backgroundColor: Colors.orange.shade100, backgroundImage: profileImage, child: profileImage == null ? const Icon(Icons.store, size: 40, color: Colors.orange) : null),
+                ),
+                if (profileUrl.isNotEmpty)
+                  Positioned(
+                    top: 0, right: 0,
+                    child: GestureDetector(
+                      onTap: _removeProfileImage,
+                      child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)),
+                    ),
+                  ),
+                if (isUploading) const CircularProgressIndicator(color: Colors.orange),
+              ],
             ),
             ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200, foregroundColor: Colors.black87, elevation: 0), onPressed: _showEditProfileSheet, icon: const Icon(Icons.edit, size: 18), label: const Text("Edit Profile"))
           ],
@@ -150,13 +164,44 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
         const SizedBox(height: 20),
         Text(widget.userData['businessName'] ?? 'Donor', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)),
-        const SizedBox(height: 30),
+        
+        const SizedBox(height: 20),
+        
+        GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ImpactWrappedScreen(userData: widget.userData))),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF1a2a6c), Color(0xFFb21f1f)]),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.white, size: 30),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Impact Wrapped 2026", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+                      Text("See your donation vibe check ✨", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
         Card(
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             children: [
-              ListTile(leading: const Icon(Icons.category, color: Colors.blue), title: const Text("Type"), trailing: Text(widget.userData['donorType'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold))),
+              ListTile(leading: const Icon(Icons.category, color: Colors.blue), title: const Text("Category"), trailing: Text(widget.userData['donorType'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold))),
               const Divider(height: 0),
               ListTile(leading: const Icon(Icons.home, color: Colors.orange), title: const Text("Location"), subtitle: Text("${widget.userData['exactAddress'] ?? 'Building'}\n${widget.userData['streetName'] ?? 'Street'}", style: const TextStyle(fontWeight: FontWeight.bold))),
             ],

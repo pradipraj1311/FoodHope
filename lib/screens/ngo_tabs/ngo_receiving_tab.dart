@@ -18,7 +18,6 @@ class NgoReceivingTab extends StatelessWidget {
 
   Future<void> _confirmWithPhoto(BuildContext context, String donationId, String volunteerUid, String donorUid) async {
     final ImagePicker picker = ImagePicker();
-    // --- LIVE CAMERA ONLY, COMPRESSED QUALITY ---
     final XFile? photo = await picker.pickImage(
         source: ImageSource.camera,
         imageQuality: 25
@@ -27,44 +26,41 @@ class NgoReceivingTab extends StatelessWidget {
     if (photo != null) {
       showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.teal)));
 
-      // Convert image to text string
       List<int> imageBytes = await photo.readAsBytes();
       String base64ReceiptString = base64Encode(imageBytes);
 
-      // --- THE AUTO-DELETE MAGIC ---
       await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
         'status': 'Completed',
         'dropoffTime': DateTime.now(),
-        'photoProofUrl': base64ReceiptString, // Save the new receipt text string
-        'photoUrl': FieldValue.delete(),      // INSTANTLY DELETE THE OLD FOOD PHOTO!
+        'photoProofUrl': base64ReceiptString,
+        'photoUrl': FieldValue.delete(),
       });
 
-      // --- WAVE 1: FIXED GAMIFICATION POINTS & UNIFIED COUNTS ---
-
-      // Award points to the NGO (Receiving food = 10 points)
+      // NGO Points
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'rankScore': FieldValue.increment(10), // Unified points field
-        'deliveriesReceived': FieldValue.increment(1), // Unified NGO count field
+        'rankScore': FieldValue.increment(10),
+        'deliveriesReceived': FieldValue.increment(1),
       });
 
-      // Award points AND increment delivery count for the Volunteer
+      // Volunteer Points
       if (volunteerUid.isNotEmpty) {
         await FirebaseFirestore.instance.collection('users').doc(volunteerUid).update({
-          'rankScore': FieldValue.increment(20), // Unified points field
-          'deliveriesMade': FieldValue.increment(1), // 🔥 FIXED: This makes rescues count!
+          'rankScore': FieldValue.increment(20),
+          'deliveriesMade': FieldValue.increment(1),
         });
       }
 
-      // Award points to the Donor (Donating food = 15 points)
+      // Donor Points & Counter
       if (donorUid.isNotEmpty) {
         await FirebaseFirestore.instance.collection('users').doc(donorUid).update({
-          'rankScore': FieldValue.increment(15), // Unified points field
+          'rankScore': FieldValue.increment(15),
+          'donationsMade': FieldValue.increment(1), // FIXED: Now tracking donor impact count
         });
       }
 
       if (context.mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🎉 Receipt Confirmed! Points awarded, DB Cleaned.")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🎉 Receipt Confirmed! Points awarded.")));
       }
     }
   }
@@ -85,7 +81,7 @@ class NgoReceivingTab extends StatelessWidget {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('donations')
-                  .where('selectedNgoId', isEqualTo: uid)
+                  .where('suggestedNgoId', isEqualTo: uid)
                   .where('status', isEqualTo: 'En Route')
                   .snapshots(),
               builder: (context, snapshot) {
@@ -100,7 +96,7 @@ class NgoReceivingTab extends StatelessWidget {
                   itemBuilder: (context, index) {
                     var doc = snapshot.data!.docs[index];
                     var data = doc.data() as Map<String, dynamic>;
-                    String volunteerUid = data['volunteerUid'] ?? '';
+                    String vUid = data['volunteerUid'] ?? '';
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(20),
@@ -115,59 +111,29 @@ class NgoReceivingTab extends StatelessWidget {
                           Text("Feeds approx ${data['quantity']} people", style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 13)),
                           const SizedBox(height: 15),
 
-                          if (volunteerUid.isNotEmpty)
+                          if (vUid.isNotEmpty)
                             FutureBuilder<List<DocumentSnapshot>>(
                                 future: Future.wait([
-                                  FirebaseFirestore.instance.collection('users').doc(volunteerUid).get(),
+                                  FirebaseFirestore.instance.collection('users').doc(vUid).get(),
                                   FirebaseFirestore.instance.collection('users').doc(uid).get(),
                                 ]),
-                                builder: (context, AsyncSnapshot<List<DocumentSnapshot>> volSnapshot) {
-                                  if (volSnapshot.connectionState == ConnectionState.waiting) {
-                                    return const Center(child: LinearProgressIndicator(color: Colors.teal));
-                                  }
+                                builder: (context, volSnapshot) {
+                                  if (volSnapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator(color: Colors.teal);
+                                  if (!volSnapshot.hasData || !volSnapshot.data![0].exists) return const Text("Volunteer disconnected");
 
-                                  if (!volSnapshot.hasData || !volSnapshot.data![0].exists) {
-                                    return const Text("Volunteer data unavailable", style: TextStyle(color: Colors.red, fontSize: 12));
-                                  }
+                                  var vData = volSnapshot.data![0].data() as Map<String, dynamic>;
+                                  var nData = volSnapshot.data![1].data() as Map<String, dynamic>;
 
-                                  var volData = volSnapshot.data![0].data() as Map<String, dynamic>? ?? {};
-                                  var ngoData = volSnapshot.data![1].data() as Map<String, dynamic>? ?? {};
-
-                                  double vLat = volData['latitude'] ?? 0.0; double vLon = volData['longitude'] ?? 0.0;
-                                  double nLat = ngoData['latitude'] ?? 0.0; double nLon = ngoData['longitude'] ?? 0.0;
-
-                                  int etaMinutes = 0; String distString = "Calculating...";
-                                  if (vLat != 0.0 && nLat != 0.0) {
-                                    double distKm = Geolocator.distanceBetween(vLat, vLon, nLat, nLon) / 1000;
-                                    etaMinutes = (distKm * 2).ceil();
-                                    distString = "${distKm.toStringAsFixed(1)} km away";
-                                  }
-
-                                  String vName = volData['name'] ?? 'Volunteer';
-                                  String vPhone = volData['phone'] ?? volData['contact'] ?? 'No Number';
-
-                                  return Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade200)),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text("Volunteer Details:", style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Row(children: [const Icon(Icons.person, size: 16, color: Colors.teal), const SizedBox(width: 8), Text(vName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))]),
-                                            Row(children: [Icon(Icons.directions_bike, size: 16, color: Colors.orange.shade700), const SizedBox(width: 4), Text(etaMinutes > 0 ? "ETA: $etaMinutes min" : distString, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.orange.shade800))]),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        InkWell(
-                                          onTap: () => _makePhoneCall(vPhone),
-                                          child: Row(children: [const Icon(Icons.phone, size: 16, color: Colors.blue), const SizedBox(width: 8), Text(vPhone, style: const TextStyle(fontSize: 13, color: Colors.blue, fontWeight: FontWeight.bold, decoration: TextDecoration.underline))]),
-                                        )
-                                      ],
-                                    ),
+                                  double dist = Geolocator.distanceBetween(vData['latitude'] ?? 0, vData['longitude'] ?? 0, nData['latitude'] ?? 0, nData['longitude'] ?? 0) / 1000;
+                                  
+                                  return Row(
+                                    children: [
+                                      const Icon(Icons.person, size: 16, color: Colors.teal),
+                                      const SizedBox(width: 8),
+                                      Text(vData['name'] ?? 'Hero', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      const Spacer(),
+                                      Text("${dist.toStringAsFixed(1)} km", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                                    ],
                                   );
                                 }
                             ),
@@ -176,9 +142,9 @@ class NgoReceivingTab extends StatelessWidget {
                           SizedBox(
                             width: double.infinity, height: 50,
                             child: ElevatedButton.icon(
-                              onPressed: () => _confirmWithPhoto(context, doc.id, volunteerUid, data['donorUid'] ?? ''),
+                              onPressed: () => _confirmWithPhoto(context, doc.id, vUid, data['donorUid'] ?? ''),
                               icon: const Icon(Icons.camera_alt),
-                              label: const Text('Take Photo to Confirm', style: TextStyle(fontWeight: FontWeight.bold)),
+                              label: const Text('Confirm Receipt', style: TextStyle(fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                             ),
                           )
