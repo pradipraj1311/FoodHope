@@ -53,9 +53,8 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
     double dLat = (widget.donation['latitude'] ?? 0.0).toDouble();
     double dLon = (widget.donation['longitude'] ?? 0.0).toDouble();
 
-    // Safely check for missing coordinates
     if (widget.vLat.abs() < 0.001 || widget.vLon.abs() < 0.001 || dLat.abs() < 0.001 || dLon.abs() < 0.001) {
-      return {'dist': 'Locating...', 'eta': 0, 'etaDisplay': '?', 'isError': true};
+      return {'dist': 'Calculating...', 'eta': 0, 'etaDisplay': '?', 'isError': true};
     }
 
     double distKm = Geolocator.distanceBetween(widget.vLat, widget.vLon, dLat, dLon) / 1000;
@@ -76,16 +75,13 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
     };
   }
 
-  Future<void> _acceptDonation() async {
+  Future<void> _acceptDonation(BuildContext context) async {
     if (_isProcessing) return;
     
-    // Capture Messenger to use after async gap
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _isProcessing = true);
 
     try {
-      // 1. Fetch fresh volunteer data with timeout
       DocumentSnapshot volunteerDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.volunteerUid)
@@ -95,31 +91,24 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
       if (!volunteerDoc.exists) throw "User data not found";
       Map<String, dynamic> vData = volunteerDoc.data() as Map<String, dynamic>;
 
-      // 2. Profile Photo Check
       if ((vData['profileImageUrl'] ?? '').isEmpty) {
-        if (mounted) {
-          _showErrorDialog("Photo Required", "Please upload a profile photo in your Settings before accepting rescues.");
-        }
+        _showErrorDialog("Photo Required", "Please upload a profile photo in your Settings before accepting rescues.");
         setState(() => _isProcessing = false);
         return;
       }
 
-      // 3. Active Rescue Check
       QuerySnapshot activeCheck = await FirebaseFirestore.instance.collection('donations')
           .where('volunteerUid', isEqualTo: widget.volunteerUid)
-          .where('status', whereIn: ['Accepted', 'Picked Up', 'En Route'])
+          .where('status', whereIn: ['Accepted', 'Picked Up', 'NGO Requested', 'En Route'])
           .get()
           .timeout(const Duration(seconds: 8));
 
       if (activeCheck.docs.isNotEmpty) {
-        if (mounted) {
-          scaffoldMessenger.showSnackBar(const SnackBar(content: Text("⚠️ You already have an active rescue!"), backgroundColor: Colors.red));
-        }
+        messenger.showSnackBar(const SnackBar(content: Text("⚠️ You already have an active rescue!"), backgroundColor: Colors.red));
         setState(() => _isProcessing = false);
         return;
       }
 
-      // 4. Update Donation Status
       await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
         'status': 'Accepted', 
         'volunteerUid': widget.volunteerUid, 
@@ -128,13 +117,12 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
         'acceptedAt': FieldValue.serverTimestamp()
       }).timeout(const Duration(seconds: 8));
 
-      // Note: Snackbars should only be shown if we're still on a valid screen
-      scaffoldMessenger.showSnackBar(const SnackBar(content: Text("Rescue Accepted! Heading to Pickup."), backgroundColor: Colors.green));
+      messenger.showSnackBar(const SnackBar(content: Text("Rescue Accepted! Heading to Pickup."), backgroundColor: Colors.green));
       
     } catch (e) {
-      debugPrint("Error accepting rescue: $e");
+      debugPrint("Error: $e");
       if (mounted) {
-        scaffoldMessenger.showSnackBar(SnackBar(content: Text("Failed to accept: $e"), backgroundColor: Colors.red));
+        messenger.showSnackBar(SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
         setState(() => _isProcessing = false);
       }
     }

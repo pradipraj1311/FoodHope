@@ -20,14 +20,8 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
   final TextEditingController quantityController = TextEditingController();
 
   String foodCategory = 'Veg Only';
-  String mealType = 'Cooked Meal';
-  String sourceType = 'Restaurant';
-  String pickupInstruction = 'Front Desk';
   String selectedExpiry = 'Within 2 Hours';
-  bool isFlashRescue = false; // NEW: Flash Rescue Flag
-
-  List<String> availableTags = ['Spicy', 'Contains Dairy', 'Jain Food', 'No Onion/Garlic'];
-  List<String> selectedTags = [];
+  bool isFlashRescue = false;
 
   XFile? _foodImage;
 
@@ -52,10 +46,9 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
     else if (selectedExpiry.contains('4 Hours')) exactExpiryTime = now.add(const Duration(hours: 4));
     else exactExpiryTime = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    double donorLat = widget.userData['latitude'] ?? 0.0;
-    double donorLon = widget.userData['longitude'] ?? 0.0;
+    double donorLat = (widget.userData['latitude'] ?? 0.0).toDouble();
+    double donorLon = (widget.userData['longitude'] ?? 0.0).toDouble();
     
-    // Auto-assign logic stays the same
     QuerySnapshot ngoSnapshot = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'NGO').get();
     String? bestNgoId; 
     String bestNgoName = "Direct Distribution"; 
@@ -63,11 +56,11 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
 
     for (var doc in ngoSnapshot.docs) {
       Map<String, dynamic> ngo = doc.data() as Map<String, dynamic>;
-      double distKm = Geolocator.distanceBetween(donorLat, donorLon, ngo['latitude'] ?? 0.0, ngo['longitude'] ?? 0.0) / 1000;
+      double distKm = Geolocator.distanceBetween(donorLat, donorLon, (ngo['latitude'] ?? 0.0).toDouble(), (ngo['longitude'] ?? 0.0).toDouble()) / 1000;
       if (distKm < 20.0 && distKm < closestDistance) { 
         closestDistance = distKm; 
         bestNgoId = doc.id; 
-        bestNgoName = ngo['organizationName'] ?? 'NGO Hub'; 
+        bestNgoName = ngo['organizationName'] ?? ngo['distributorName'] ?? 'NGO Hub'; 
       }
     }
 
@@ -76,6 +69,9 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
       List<int> imageBytes = await _foodImage!.readAsBytes();
       base64ImageString = base64Encode(imageBytes);
     }
+
+    // GENERATE 4-DIGIT PIN
+    String generatedOtp = (1000 + Random().nextInt(9000)).toString();
 
     await FirebaseFirestore.instance.collection('donations').add({
       'donorUid': widget.uid,
@@ -87,11 +83,12 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
       'foodItem': foodItemController.text.trim(),
       'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
       'category': foodCategory,
-      'isFlashRescue': isFlashRescue, // NEW: Mark as Flash Rescue
+      'isFlashRescue': isFlashRescue,
       'photoUrl': base64ImageString,
       'exactExpiryTime': Timestamp.fromDate(exactExpiryTime),
       'status': 'Available',
       'postedAt': Timestamp.now(),
+      'pickupOtp': generatedOtp, // ADDED BACK PIN
       'suggestedNgoId': bestNgoId,
       'suggestedNgoName': bestNgoName,
     });
@@ -127,26 +124,18 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
                 ),
               ],
             ),
-            if (isFlashRescue)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 10),
-                child: Text("🔥 Flash Rescue notifies nearby volunteers immediately!", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
-            
             const SizedBox(height: 15),
-            TextField(controller: foodItemController, decoration: const InputDecoration(labelText: "What are you donating? (e.g. 20 Lunch Boxes)", border: OutlineInputBorder())),
+            TextField(controller: foodItemController, decoration: const InputDecoration(labelText: "What are you donating?*", border: OutlineInputBorder())),
             const SizedBox(height: 10),
-            TextField(controller: quantityController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Feeds how many people?", border: OutlineInputBorder())),
-            
+            TextField(controller: quantityController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Feeds how many people?*", border: OutlineInputBorder())),
             const SizedBox(height: 15),
             Row(
               children: [
-                Expanded(child: DropdownButtonFormField<String>(value: foodCategory, decoration: const InputDecoration(labelText: "Dietary"), items: ['Veg Only', 'Non-Veg', 'Both'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => foodCategory = v!))),
+                Expanded(child: DropdownButtonFormField<String>(value: foodCategory, decoration: const InputDecoration(labelText: "Category"), items: ['Veg Only', 'Non-Veg', 'Both'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => foodCategory = v!))),
                 const SizedBox(width: 10),
                 Expanded(child: DropdownButtonFormField<String>(value: selectedExpiry, decoration: const InputDecoration(labelText: "Expiry"), items: ['Within 1 Hour', 'Within 2 Hours', 'Within 4 Hours'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => selectedExpiry = v!))),
               ],
             ),
-
             const SizedBox(height: 20),
             GestureDetector(
               onTap: _pickImage,
@@ -158,16 +147,11 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
                     : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text("Photo Ready")]),
               ),
             ),
-
             const SizedBox(height: 25),
             SizedBox(
               width: double.infinity, height: 55,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isFlashRescue ? Colors.red.shade700 : Colors.orange.shade700,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: isFlashRescue ? Colors.red.shade700 : Colors.orange.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                 onPressed: _publishDonation,
                 child: Text(isFlashRescue ? "TRIGGER FLASH RESCUE 🔥" : "Publish Rescue", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
