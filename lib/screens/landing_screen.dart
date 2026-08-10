@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
-import 'admin_dashboard.dart';
+import 'admin_login_screen.dart';
 
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
@@ -37,10 +37,10 @@ class LandingScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 20),
-            // HIDDEN TRIGGER: Long press the logo to open Admin Panel
+            // HIDDEN TRIGGER: Long press the logo to open Admin Login
             GestureDetector(
               onLongPress: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginScreen()));
               },
               child: Container(
                 padding: const EdgeInsets.all(12),
