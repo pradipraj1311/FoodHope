@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
+import 'admin_dashboard.dart';
 
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
@@ -36,13 +37,19 @@ class LandingScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
+            // HIDDEN TRIGGER: Long press the logo to open Admin Panel
+            GestureDetector(
+              onLongPress: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.volunteer_activism, color: Colors.green, size: 30),
               ),
-              child: const Icon(Icons.volunteer_activism, color: Colors.green, size: 30),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -71,7 +78,6 @@ class LandingScreen extends StatelessWidget {
             ),
             const SizedBox(height: 40),
             
-            // ROLE CARDS
             _buildRoleCard(
               context,
               title: "I want to Donate Food",
