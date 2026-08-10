@@ -50,6 +50,7 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
     super.dispose();
   }
 
+  // --- HELPER: GET REALISTIC TRAVEL TIME ---
   Map<String, dynamic> _calculateTimeAndDistance() {
     double dLat = (widget.donation['latitude'] ?? 0.0).toDouble();
     double dLon = (widget.donation['longitude'] ?? 0.0).toDouble();
@@ -76,9 +77,10 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
     };
   }
 
-  Future<void> _acceptDonation() async {
+  Future<void> _acceptDonation(BuildContext context) async {
     if (_isProcessing) return;
     
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _isProcessing = true);
 
     try {
@@ -86,61 +88,45 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
           .collection('users')
           .doc(widget.volunteerUid)
           .get()
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 8));
 
-      if (!volunteerDoc.exists) throw "Profile not found";
+      if (!volunteerDoc.exists) throw "User data not found";
       Map<String, dynamic> vData = volunteerDoc.data() as Map<String, dynamic>;
 
-      // 1. SUSPENSION CHECK
-      if (vData['isSuspended'] == true) {
-        _showErrorDialog("Account Suspended", "Your account has been suspended by Admin. Please contact support.");
-        setState(() => _isProcessing = false);
-        return;
-      }
-
-      // 2. ONE-TIME VERIFICATION CHECK
+      // Verification check
       String vStatus = vData['verificationStatus'] ?? 'pending';
       if (vStatus == 'pending') {
         _showVerificationRequiredDialog();
         setState(() => _isProcessing = false);
         return;
-      } else if (vStatus == 'rejected') {
-        _showErrorDialog("Verification Rejected", "Your profile verification was rejected. Please re-upload your details in profile.");
-        setState(() => _isProcessing = false);
-        return;
       }
 
-      // 3. Active Rescue Check
       QuerySnapshot activeCheck = await FirebaseFirestore.instance.collection('donations')
           .where('volunteerUid', isEqualTo: widget.volunteerUid)
           .where('status', whereIn: ['Accepted', 'Picked Up', 'NGO Requested', 'En Route'])
           .get()
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 8));
 
       if (activeCheck.docs.isNotEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠️ You already have an active rescue!"), backgroundColor: Colors.red));
-        }
+        messenger.showSnackBar(const SnackBar(content: Text("⚠️ You already have an active rescue!"), backgroundColor: Colors.red));
         setState(() => _isProcessing = false);
         return;
       }
 
-      // 4. Update Donation Status
       await FirebaseFirestore.instance.collection('donations').doc(widget.donationId).update({
         'status': 'Accepted', 
         'volunteerUid': widget.volunteerUid, 
         'volunteerName': vData['name'] ?? 'Hero',
         'volunteerContact': vData['contact'] ?? '',
         'acceptedAt': FieldValue.serverTimestamp()
-      }).timeout(const Duration(seconds: 10));
+      }).timeout(const Duration(seconds: 8));
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rescue Accepted! Heading to Pickup."), backgroundColor: Colors.green));
-      }
+      messenger.showSnackBar(const SnackBar(content: Text("Rescue Accepted! Heading to Pickup."), backgroundColor: Colors.green));
+      
     } catch (e) {
-      debugPrint("Error accepting rescue: $e");
+      debugPrint("Error: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
+        messenger.showSnackBar(SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
         setState(() => _isProcessing = false);
       }
     }
@@ -178,7 +164,7 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
         
         await FirebaseFirestore.instance.collection('users').doc(widget.volunteerUid).update({
           'verificationProofUrl': base64,
-          'verificationStatus': 'pending', // Re-confirming pending status
+          'verificationStatus': 'pending',
         });
         
         if (mounted) {
@@ -186,7 +172,7 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
             context: context,
             builder: (context) => AlertDialog(
               title: const Text("Sent! ✅"),
-              content: const Text("Selfie sent to Admin. You will be able to accept rescues as soon as you are approved (Usually < 1 hour)."),
+              content: const Text("Selfie sent to Admin. You will be able to accept rescues as soon as you are approved."),
               actions: [ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Understood"))],
             )
           );
@@ -214,15 +200,10 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
   @override
   Widget build(BuildContext context) {
     final info = _calculateTimeAndDistance();
-    final bool isError = info['isError'];
-    final int eta = info['eta'] is int ? info['eta'] : 0;
     final bool isFlash = widget.donation['isFlashRescue'] == true;
-    
-    DateTime expiryTime = (widget.donation['exactExpiryTime'] as Timestamp).toDate();
-    int minsToExpiry = expiryTime.difference(DateTime.now()).inMinutes;
-    bool isRisky = !isError && (eta + 15) > minsToExpiry;
-
-    String donorPlace = widget.donation['businessName'] ?? "Local Donor";
+    final donorPlace = widget.donation['businessName'] ?? "Local Donor";
+    final donorPhone = widget.donation['donorContact'] ?? "Not Provided";
+    final donorAddress = widget.donation['fullAddress'] ?? 'No Address';
 
     return AnimatedBuilder(
       animation: _pulseController,
@@ -249,14 +230,14 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isFlash ? Colors.red.shade900 : (isError ? Colors.grey.shade100 : (isRisky ? Colors.red.shade50 : Colors.green.shade50)),
+                color: isFlash ? Colors.red.shade900 : Colors.green.shade50,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(children: [
-                    Icon(isFlash ? Icons.bolt : Icons.timer_outlined, size: 16, color: isFlash ? Colors.yellowAccent : (isError ? Colors.grey : (isRisky ? Colors.red : Colors.green))),
+                    Icon(isFlash ? Icons.bolt : Icons.timer_outlined, size: 16, color: isFlash ? Colors.yellowAccent : Colors.green.shade800),
                     const SizedBox(width: 6),
                     Text(
                       isFlash ? "FLASH RESCUE: Arriving in ${info['etaDisplay']}" : "Travel Time: ${info['etaDisplay']} (${info['dist']})",
@@ -265,10 +246,6 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
                   ]),
                   if (isFlash) 
                     const Text("URGENT 🔥", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10))
-                  else if (isError) 
-                    const Text("📍 Set location", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange))
-                  else 
-                    Row(children: [Icon(isRisky ? Icons.warning_amber : Icons.verified, size: 16, color: isRisky ? Colors.red : Colors.green), const SizedBox(width: 4), Text(isRisky ? "Risky" : "Safe", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isRisky ? Colors.red.shade800 : Colors.green.shade800))]),
                 ],
               ),
             ),
@@ -277,60 +254,47 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(widget.donation['foodItem'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text("Place: $donorPlace", style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.blueGrey)),
+                  const SizedBox(height: 8),
+                  
+                  // DONOR CONTACT & ADDRESS
                   Row(
                     children: [
-                      Container(
-                        height: 50, width: 50, 
-                        decoration: BoxDecoration(
-                          color: isFlash ? Colors.red.shade50 : Colors.grey.shade100, 
-                          borderRadius: BorderRadius.circular(10),
-                          border: isFlash ? Border.all(color: Colors.red.shade200) : null,
-                        ),
-                        child: Icon(Icons.fastfood, color: isFlash ? Colors.red : Colors.grey)
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(widget.donation['foodItem'], style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: isFlash ? Colors.red.shade900 : Colors.black87)),
-                            Text("From: $donorPlace", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.blueGrey)),
-                            Text("Feeds ${widget.donation['quantity']} • ${widget.donation['category']}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                          ],
-                        ),
-                      ),
+                      const Icon(Icons.phone, size: 16, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Text(donorPhone, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  CountdownTimerWidget(expiryTimestamp: widget.donation['exactExpiryTime'] as Timestamp?),
-                  const Divider(),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.location_on, color: Colors.blue),
-                    title: Text(widget.donation['fullAddress'] ?? 'No Address', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    subtitle: const Text("Tap to view on Map", style: TextStyle(fontSize: 11)),
-                    onTap: () {
-                      final double lat = (widget.donation['latitude'] ?? 0.0).toDouble();
-                      final double lon = (widget.donation['longitude'] ?? 0.0).toDouble();
-                      final String googleMapsUrl = "https://www.google.com/maps/search/?api=1&query=$lat,$lon";
-                      launchUrl(Uri.parse(googleMapsUrl), mode: LaunchMode.externalApplication);
-                    },
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.location_on, size: 16, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(donorAddress, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                    ],
                   ),
-                  const SizedBox(height: 10),
+                  
+                  const Divider(height: 24),
+                  CountdownTimerWidget(expiryTimestamp: widget.donation['exactExpiryTime'] as Timestamp?),
+                  const SizedBox(height: 16),
+                  
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isFlash ? Colors.red : (isRisky ? Colors.orange.shade700 : Colors.green.shade600), 
+                        backgroundColor: isFlash ? Colors.red : Colors.green.shade700, 
                         foregroundColor: Colors.white,
                         elevation: isFlash ? 8 : 2,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _isProcessing ? null : _acceptDonation,
+                      onPressed: _isProcessing ? null : () => _acceptDonation(context),
                       child: _isProcessing 
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(isFlash ? "RESPOND NOW 🔥" : (isRisky ? "Accept Risky Rescue" : "Accept Rescue"), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        : Text(isFlash ? "RESPOND NOW 🔥" : "ACCEPT RESCUE", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     ),
                   )
                 ],

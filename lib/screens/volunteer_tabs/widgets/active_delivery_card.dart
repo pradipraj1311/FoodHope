@@ -30,7 +30,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     }
   }
 
-  // --- STEP 1: PICKUP VERIFICATION ---
+  // --- STEP 1: PICKUP VERIFICATION (Donor gets points here) ---
   Future<void> _verifyOtpAndPickup(String donationId, String correctOtp, String donorUid) async {
     if (_otpController.text.trim() != correctOtp) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid PIN! Ask the donor for the 4-digit code."), backgroundColor: Colors.red));
@@ -40,11 +40,13 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     setState(() => _isProcessing = true);
     
     try {
+      // 1. Update Donation Status
       await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
         'status': 'Picked Up',
         'pickedUpAt': FieldValue.serverTimestamp(),
       });
 
+      // 2. Award Points to Donor Instantly
       await FirebaseFirestore.instance.collection('users').doc(donorUid).update({
         'rankScore': FieldValue.increment(20),
         'donationsMade': FieldValue.increment(1),
@@ -108,6 +110,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
           'destinationType': type,
         });
 
+        // Reward logic
         int points = (type == 'NGO') ? 30 : (type == 'Labor Colony' ? 50 : 60);
 
         await FirebaseFirestore.instance.collection('users').doc(widget.volunteerUid).update({
@@ -160,7 +163,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                   children: const [
                     Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
                     SizedBox(width: 10),
-                    Expanded(child: Text("પહેલા આ નંબર પર ફોન કરીને પૂછી લેવું કે ત્યાં જમવાની જરૂર છે કે નહિ.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12))),
+                    Expanded(child: Text("Please call the number below to confirm food requirement before traveling.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12))),
                   ],
                 ),
               ),
