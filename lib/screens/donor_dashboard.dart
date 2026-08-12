@@ -10,6 +10,7 @@ import 'donor_tabs/donor_home_tab.dart';
 import 'donor_tabs/donor_history_tab.dart';
 import 'donor_tabs/donor_profile_tab.dart';
 import 'gamification/city_leaderboard_screen.dart';
+import 'admin_login_screen.dart';
 
 class DonorDashboard extends StatefulWidget {
   const DonorDashboard({super.key});
@@ -91,6 +92,11 @@ class _DonorDashboardState extends State<DonorDashboard> {
               ),
             ),
             actions: [
+              if (userData['role'] == 'Admin')
+                IconButton(
+                  icon: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginScreen())),
+                ),
               IconButton(
                 icon: const Icon(Icons.emoji_events, color: Colors.amber),
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CityLeaderboardScreen(currentUserUid: currentUser!.uid, userCity: userData['city'] ?? 'All'))),

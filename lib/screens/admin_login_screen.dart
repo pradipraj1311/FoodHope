@@ -19,13 +19,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     final String adminPass = dotenv.get('ADMIN_PASS', fallback: 'password');
 
     if (_userController.text == adminUser && _passController.text == adminPass) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AdminDashboard()));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Access Denied: Invalid Credentials"), 
-          backgroundColor: Colors.red
-        )
+        const SnackBar(content: Text("Access Denied: Invalid Credentials"), backgroundColor: Colors.red)
       );
     }
   }
@@ -45,33 +42,32 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               children: [
                 const Icon(Icons.security, color: Colors.greenAccent, size: 50),
                 const SizedBox(height: 20),
-                const Text(
-                  "ADMIN CONTROL", 
-                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  "SECURE GATEWAY", 
-                  style: TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.bold)
-                ),
+                const Text("ADMIN CONTROL", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
                 const SizedBox(height: 30),
+                
+                // HIDDEN ADMIN ID
                 TextField(
                   controller: _userController, 
+                  obscureText: true, 
+                  enableInteractiveSelection: false, 
                   style: const TextStyle(color: Colors.white), 
                   decoration: InputDecoration(
-                    labelText: "Username", 
+                    labelText: "Admin ID", 
                     labelStyle: const TextStyle(color: Colors.white60),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    prefixIcon: const Icon(Icons.person, color: Colors.white60),
+                    prefixIcon: const Icon(Icons.badge, color: Colors.white60),
                   )
                 ),
                 const SizedBox(height: 15),
+                
+                // HIDDEN SECURITY KEY
                 TextField(
                   controller: _passController, 
                   obscureText: true, 
+                  enableInteractiveSelection: false, 
                   style: const TextStyle(color: Colors.white), 
                   decoration: InputDecoration(
-                    labelText: "Password", 
+                    labelText: "Security Key", 
                     labelStyle: const TextStyle(color: Colors.white60),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.lock, color: Colors.white60),
@@ -83,12 +79,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: _login, 
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.greenAccent, 
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                    ), 
-                    child: const Text("UNLOCK SYSTEM", style: TextStyle(fontWeight: FontWeight.bold))
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+                    child: const Text("ACCESS SYSTEM", style: TextStyle(fontWeight: FontWeight.bold))
                   )
                 ),
               ],

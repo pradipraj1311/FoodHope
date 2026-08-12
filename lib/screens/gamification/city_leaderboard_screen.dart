@@ -61,7 +61,6 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     String name = data['name'] ?? data['organizationName'] ?? data['businessName'] ?? 'Hero';
     String score = (data['rankScore'] ?? 0).toString();
-    // Using profileImageUrl as requested for profile picture
     String imageBase64 = data['profileImageUrl'] ?? '';
 
     return TweenAnimationBuilder<double>(
@@ -127,7 +126,6 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
     bool isMe = doc.id == widget.currentUserUid;
     String name = data['name'] ?? data['organizationName'] ?? data['businessName'] ?? 'Hero';
     int points = data['rankScore'] ?? 0;
-    // Using profileImageUrl for profile picture
     String imageBase64 = data['profileImageUrl'] ?? '';
 
     return FadeTransition(
@@ -163,7 +161,7 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  if (isMe) Text("Keep going! 🚀", style: TextStyle(color: Colors.green.shade700, fontSize: 11, fontWeight: FontWeight.bold)),
+                  if (isMe) Text("Keep up the good work!", style: TextStyle(color: Colors.green.shade700, fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -256,12 +254,10 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
                   }
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(child: Text("No data yet.", style: TextStyle(color: Colors.white70)));
+                    return const Center(child: Text("No users found in this category.", style: TextStyle(color: Colors.white70)));
                   }
 
                   List<DocumentSnapshot> allUsers = snapshot.data!.docs;
-                  
-                  // Find current user rank
                   int myRank = -1;
                   for (int i = 0; i < allUsers.length; i++) {
                     if (allUsers[i].id == widget.currentUserUid) {
@@ -290,7 +286,6 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
                           ],
                         ),
                       ),
-                      // My Rank Sticky Bar
                       if (myRank != -1)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),

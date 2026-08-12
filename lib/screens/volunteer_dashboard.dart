@@ -11,6 +11,7 @@ import 'volunteer_tabs/volunteer_home_tab.dart';
 import 'volunteer_tabs/volunteer_history_tab.dart';
 import 'volunteer_tabs/volunteer_profile_tab.dart';
 import 'gamification/city_leaderboard_screen.dart';
+import 'admin_login_screen.dart';
 
 class VolunteerDashboard extends StatefulWidget {
   const VolunteerDashboard({super.key});
@@ -79,6 +80,11 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               ),
             ),
             actions: [
+              if (userData['role'] == 'Admin')
+                IconButton(
+                  icon: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginScreen())),
+                ),
               IconButton(
                 icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 28),
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CityLeaderboardScreen(currentUserUid: currentUser!.uid, userCity: userData['city'] ?? 'All'))),
