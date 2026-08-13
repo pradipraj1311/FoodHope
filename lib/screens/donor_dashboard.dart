@@ -92,7 +92,7 @@ class _DonorDashboardState extends State<DonorDashboard> {
               ),
             ),
             actions: [
-              if (userData['role'] == 'Admin')
+              if (userData['isAdmin'] == true)
                 IconButton(
                   icon: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginScreen())),
