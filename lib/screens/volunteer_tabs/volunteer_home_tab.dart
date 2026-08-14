@@ -6,6 +6,7 @@ import 'widgets/active_delivery_card.dart';
 import 'widgets/available_donation_card.dart';
 import '../gamification/city_leaderboard_screen.dart';
 import '../gamification/squads_hub_screen.dart';
+import '../../widgets/rank_motivational_banner.dart';
 
 class VolunteerHomeTab extends StatelessWidget {
   final Map<String, dynamic> userData;
@@ -26,6 +27,9 @@ class VolunteerHomeTab extends StatelessWidget {
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
+            SliverToBoxAdapter(
+              child: RankMotivationalBanner(uid: uid, city: userData['city'] ?? 'Unknown', role: 'Volunteer'),
+            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -63,7 +67,8 @@ class VolunteerHomeTab extends StatelessWidget {
                                     context,
                                     MaterialPageRoute(builder: (_) => CityLeaderboardScreen(
                                         currentUserUid: uid,
-                                        userCity: userData['city'] ?? 'All'
+                                        userCity: userData['city'] ?? 'All',
+                                        userRole: 'Volunteer' // FIXED: Passing correct role
                                     ))
                                 );
                               },
@@ -85,7 +90,6 @@ class VolunteerHomeTab extends StatelessWidget {
             ),
 
             StreamBuilder<QuerySnapshot>(
-              // FIXED: Single field query to bypass Firestore index requirement
               stream: FirebaseFirestore.instance
                   .collection('donations')
                   .where('status', isEqualTo: 'Available')
@@ -106,11 +110,9 @@ class VolunteerHomeTab extends StatelessWidget {
                   );
                 }
 
-                // Client-side filtering for Expiry and Ranking by Distance
                 List<DocumentSnapshot> allDocs = snapshot.data!.docs;
                 DateTime now = DateTime.now();
 
-                // 1. Filter out expired food
                 List<DocumentSnapshot> freshDocs = allDocs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
                   if (data['exactExpiryTime'] == null) return false;
@@ -118,7 +120,6 @@ class VolunteerHomeTab extends StatelessWidget {
                   return expiry.isAfter(now);
                 }).toList();
 
-                // 2. Rank by Distance (Closest first)
                 freshDocs.sort((a, b) {
                   var dataA = a.data() as Map<String, dynamic>;
                   var dataB = b.data() as Map<String, dynamic>;

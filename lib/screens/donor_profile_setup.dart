@@ -101,6 +101,7 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
 
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
+      // SENIOR DEV FIX: Always set rankScore and isAdmin to ensure leaderboard works
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'profileImageUrl': _base64Image,
         'businessName': businessNameController.text.trim(),
@@ -114,7 +115,9 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
         'city': city,
         'isProfileComplete': true,
         'rankScore': 0,
+        'impactPoints': 0,
         'donationsMade': 0,
+        'isAdmin': false,
       });
 
       if (mounted) {

@@ -45,30 +45,33 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
 
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
+            // SENIOR DEV FIX: Simple query + Local Filtering to stop infinite buffering
             stream: FirebaseFirestore.instance.collection('donations')
                 .where('donorUid', isEqualTo: widget.uid)
-                .where('status', whereIn: ['Available', 'Accepted', 'Picked Up', 'NGO Requested', 'En Route'])
                 .snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.orange));
+              
+              if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red, fontSize: 10)));
+
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("You have no active food postings.", style: TextStyle(color: Colors.grey)));
 
-              // Real-time Expiry Re-evaluation
+              // Local Filtering for status
               var activeDocs = snapshot.data!.docs.where((doc) {
                 var data = doc.data() as Map<String, dynamic>;
+                String status = data['status'] ?? '';
+                bool isActive = ['Available', 'Accepted', 'Picked Up', 'NGO Requested', 'En Route'].contains(status);
                 
-                if (data['exactExpiryTime'] != null) {
+                if (isActive && data['exactExpiryTime'] != null) {
                   DateTime expiry = (data['exactExpiryTime'] as Timestamp).toDate();
-                  // If food is expired, we hide it from the active list
                   if (expiry.isBefore(DateTime.now())) {
-                    // Update DB in background if it's still available
-                    if (data['status'] == 'Available') {
+                    if (status == 'Available') {
                       FirebaseFirestore.instance.collection('donations').doc(doc.id).update({'status': 'Expired'});
                     }
                     return false;
                   }
                 }
-                return true;
+                return isActive;
               }).toList();
 
               if (activeDocs.isEmpty) return const Center(child: Text("No active food postings.", style: TextStyle(color: Colors.grey)));
@@ -96,7 +99,7 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                             children: [
-                              Expanded(child: Text(postData['foodItem'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), 
+                              Expanded(child: Text(postData['foodItem'] ?? 'Unknown Item', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), 
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), 
                                 decoration: BoxDecoration(
@@ -111,11 +114,10 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                             ]
                           ),
                           const SizedBox(height: 10), 
-                          Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity']}")]),
+                          Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity'] ?? 0}")]),
                           const SizedBox(height: 8), 
                           CountdownTimerWidget(expiryTimestamp: postData['exactExpiryTime'] as Timestamp?),
                           
-                          // PIN Section: Show only when Volunteer has Accepted
                           if (currentStatus == 'Accepted') ...[
                             const Divider(height: 20), 
                             Container(

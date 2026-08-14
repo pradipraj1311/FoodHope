@@ -37,13 +37,19 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _saveUserToDatabase(String uid, String contactInfo, String name) async {
+    // SENIOR DEV FIX: Initialize ranking fields during signup
     await FirebaseFirestore.instance.collection('users').doc(uid).set({
       'uid': uid,
       'name': name.isEmpty ? "Unknown User" : name,
       'contact': contactInfo,
       'role': widget.role,
-      'createdAt': DateTime.now(),
+      'createdAt': FieldValue.serverTimestamp(),
       'isProfileComplete': false,
+      'rankScore': 0,
+      'impactPoints': 0,
+      'trustScore': 100,
+      'isAdmin': false,
+      'city': 'Pending',
     });
   }
 
@@ -81,17 +87,13 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> signUpWithGoogle() async {
     try {
-      final googleSignIn = GoogleSignIn.instance;
-      await googleSignIn.initialize();
-
-      final GoogleSignInAccount? googleUser = await googleSignIn.authenticate();
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return;
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final clientAuth = await googleUser.authorizationClient.authorizeScopes(['email']);
-
       final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: clientAuth.accessToken,
+        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 

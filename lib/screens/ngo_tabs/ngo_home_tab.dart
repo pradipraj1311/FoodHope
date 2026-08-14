@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/needy_spots_service.dart';
 import '../gamification/squads_hub_screen.dart';
+import '../../widgets/rank_motivational_banner.dart';
 
 class NgoHomeTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -34,6 +35,7 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        RankMotivationalBanner(uid: widget.uid, city: widget.userData['city'] ?? 'Unknown', role: 'NGO'),
         Container(
           width: double.infinity, 
           padding: const EdgeInsets.all(20), 
@@ -75,16 +77,25 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
               const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text("Incoming Food Requests", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
               
               StreamBuilder<QuerySnapshot>(
+                // SENIOR DEV FIX: Remove composite filter to stop buffering
                 stream: FirebaseFirestore.instance.collection('donations')
                     .where('selectedNgoId', isEqualTo: widget.uid)
-                    .where('status', whereIn: ['NGO Requested', 'En Route'])
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.teal));
+                  
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No active requests.", style: TextStyle(color: Colors.grey))));
 
+                  // Local Filtering for status
+                  var incomingRescues = snapshot.data!.docs.where((doc) {
+                    var status = (doc.data() as Map<String, dynamic>)['status'] ?? '';
+                    return ['NGO Requested', 'En Route'].contains(status);
+                  }).toList();
+
+                  if (incomingRescues.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No active requests.", style: TextStyle(color: Colors.grey))));
+
                   return Column(
-                    children: snapshot.data!.docs.map((post) {
+                    children: incomingRescues.map((post) {
                       Map<String, dynamic> postData = post.data() as Map<String, dynamic>;
                       String status = postData['status'] ?? '';
                       bool isRequested = status == 'NGO Requested';

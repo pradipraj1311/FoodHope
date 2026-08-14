@@ -99,7 +99,11 @@ class _DonorDashboardState extends State<DonorDashboard> {
                 ),
               IconButton(
                 icon: const Icon(Icons.emoji_events, color: Colors.amber),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CityLeaderboardScreen(currentUserUid: currentUser!.uid, userCity: userData['city'] ?? 'All'))),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CityLeaderboardScreen(
+                  currentUserUid: currentUser!.uid, 
+                  userCity: userData['city'] ?? 'All',
+                  userRole: 'Donor',
+                ))),
               )
             ],
           ),
