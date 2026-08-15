@@ -72,6 +72,7 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     String name = (data['name'] ?? data['organizationName'] ?? data['businessName'] ?? 'Hero').split(' ')[0];
     String score = (data['rankScore'] ?? 0).toString();
+    String img = data['profileImageUrl'] ?? '';
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
@@ -79,29 +80,73 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
         Stack(
           alignment: Alignment.center,
           children: [
-            CircleAvatar(radius: rank == 1 ? 42 : 32, backgroundColor: baseColor, child: CircleAvatar(radius: rank == 1 ? 38 : 28, backgroundColor: Colors.black)),
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: baseColor, width: 2)),
+              child: CircleAvatar(
+                radius: rank == 1 ? 40 : 30,
+                backgroundColor: Colors.white10,
+                backgroundImage: img.isNotEmpty ? MemoryImage(base64Decode(img)) : null,
+                child: img.isEmpty ? Icon(Icons.person, color: Colors.white38, size: rank == 1 ? 40 : 30) : null,
+              ),
+            ),
             if (rank == 1) const Positioned(top: -15, child: Icon(Icons.workspace_premium, color: Colors.amber, size: 30)),
+            Positioned(
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: baseColor, shape: BoxShape.circle),
+                child: Text("$rank", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+              ),
+            )
           ],
         ),
         const SizedBox(height: 8),
         Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
         Text("$score pts", style: TextStyle(color: roleColor, fontWeight: FontWeight.bold, fontSize: 12)),
         const SizedBox(height: 12),
-        Container(width: rank == 1 ? 90 : 75, height: height, decoration: BoxDecoration(color: baseColor.withOpacity(0.2), borderRadius: const BorderRadius.vertical(top: Radius.circular(20)))),
+        Container(
+          width: rank == 1 ? 90 : 75, 
+          height: height, 
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [baseColor.withOpacity(0.3), baseColor.withOpacity(0.05)],
+            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20))
+          )
+        ),
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    Query query = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: _selectedRole);
+    
+    // Filter by city if not "All"
+    if (widget.userCity != 'All' && widget.userCity != 'Set Location') {
+      query = query.where('city', isEqualTo: widget.userCity);
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Column(
         children: [
           const SizedBox(height: 60),
-          Text(widget.userCity.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios, color: Colors.white)),
+                Text(widget.userCity.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                const Icon(Icons.emoji_events, color: Colors.amber, size: 28),
+              ],
+            ),
+          ),
           const SizedBox(height: 20),
-          // Role Toggles
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(4),
@@ -121,32 +166,64 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> with Sing
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              // SENIOR DEV FIX: Fetch by role & city, but SORT LOCALLY to prevent buffering/index errors
-              stream: FirebaseFirestore.instance.collection('users')
-                  .where('role', isEqualTo: _selectedRole)
-                  .where('city', isEqualTo: widget.userCity)
-                  .snapshots(),
+              stream: query.snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No data for this city.", style: TextStyle(color: Colors.white24)));
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No heroes found here.", style: TextStyle(color: Colors.white24)));
 
-                // Local Sort Logic
                 List<DocumentSnapshot> users = snapshot.data!.docs.toList();
                 users.sort((a, b) => ((b.data() as Map)['rankScore'] ?? 0).compareTo((a.data() as Map)['rankScore'] ?? 0));
 
-                return CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(child: _buildTopThree(users.take(3).toList())),
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        var data = users[index + 3].data() as Map<String, dynamic>;
-                        return ListTile(
-                          leading: Text("#${index + 4}", style: const TextStyle(color: Colors.white38)),
-                          title: Text(data['name'] ?? data['businessName'] ?? "Hero", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          trailing: Text("${data['rankScore'] ?? 0} pts", style: TextStyle(color: _getRoleColor(_selectedRole), fontWeight: FontWeight.bold)),
-                        );
-                      }, childCount: users.length > 3 ? users.length - 3 : 0),
+                int myRank = -1;
+                for (int i = 0; i < users.length; i++) {
+                  if (users[i].id == widget.currentUserUid) { myRank = i + 1; break; }
+                }
+
+                return Column(
+                  children: [
+                    Expanded(
+                      child: CustomScrollView(
+                        slivers: [
+                          SliverToBoxAdapter(child: _buildTopThree(users.take(3).toList())),
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate((context, index) {
+                              var data = users[index + 3].data() as Map<String, dynamic>;
+                              String img = data['profileImageUrl'] ?? '';
+                              return ListTile(
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text("#${index + 4}", style: const TextStyle(color: Colors.white38, fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 10),
+                                    CircleAvatar(
+                                      radius: 18,
+                                      backgroundImage: img.isNotEmpty ? MemoryImage(base64Decode(img)) : null,
+                                      child: img.isEmpty ? const Icon(Icons.person, size: 18) : null,
+                                    ),
+                                  ],
+                                ),
+                                title: Text(data['name'] ?? data['businessName'] ?? "Hero", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                trailing: Text("${data['rankScore'] ?? 0} pts", style: TextStyle(color: _getRoleColor(_selectedRole), fontWeight: FontWeight.bold)),
+                              );
+                            }, childCount: users.length > 3 ? users.length - 3 : 0),
+                          ),
+                        ],
+                      ),
                     ),
+                    if (myRank != -1)
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: const BoxDecoration(color: Color(0xFF1E293B), borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+                        child: Row(
+                          children: [
+                            Text("#$myRank", style: TextStyle(color: _getRoleColor(widget.userRole), fontSize: 20, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 15),
+                            const Text("YOUR CURRENT RANK", style: TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const Spacer(),
+                            Text("${users[myRank - 1]['rankScore']} PTS", style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      )
                   ],
                 );
               },
