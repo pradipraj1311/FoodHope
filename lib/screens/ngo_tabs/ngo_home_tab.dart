@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/needy_spots_service.dart';
 import '../gamification/squads_hub_screen.dart';
 import '../../widgets/rank_motivational_banner.dart';
+import '../donor_tabs/widgets/post_food_sheet.dart';
 
 class NgoHomeTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -36,6 +37,30 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         RankMotivationalBanner(uid: widget.uid, city: widget.userData['city'] ?? 'Unknown', role: 'NGO'),
+        
+        // NGO FOOD POSTING OPTION
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: SizedBox(
+            width: double.infinity, height: 55,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+              ),
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                builder: (context) => PostFoodSheet(userData: widget.userData, uid: widget.uid)
+              ),
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text("Post Surplus Food", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
+            ),
+          ),
+        ),
+
         Container(
           width: double.infinity, 
           padding: const EdgeInsets.all(20), 
@@ -77,7 +102,6 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
               const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text("Incoming Food Requests", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
               
               StreamBuilder<QuerySnapshot>(
-                // SENIOR DEV FIX: Remove composite filter to stop buffering
                 stream: FirebaseFirestore.instance.collection('donations')
                     .where('selectedNgoId', isEqualTo: widget.uid)
                     .snapshots(),
@@ -86,7 +110,6 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
                   
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No active requests.", style: TextStyle(color: Colors.grey))));
 
-                  // Local Filtering for status
                   var incomingRescues = snapshot.data!.docs.where((doc) {
                     var status = (doc.data() as Map<String, dynamic>)['status'] ?? '';
                     return ['NGO Requested', 'En Route'].contains(status);

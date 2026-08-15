@@ -55,6 +55,7 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
     double closestDistance = 9999.0;
 
     for (var doc in ngoSnapshot.docs) {
+      if (doc.id == widget.uid) continue; // Don't suggest yourself as the destination hub if you are an NGO posting food
       Map<String, dynamic> ngo = doc.data() as Map<String, dynamic>;
       double distKm = Geolocator.distanceBetween(donorLat, donorLon, (ngo['latitude'] ?? 0.0).toDouble(), (ngo['longitude'] ?? 0.0).toDouble()) / 1000;
       if (distKm < 20.0 && distKm < closestDistance) { 
@@ -75,7 +76,7 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
 
     await FirebaseFirestore.instance.collection('donations').add({
       'donorUid': widget.uid,
-      'businessName': widget.userData['businessName'] ?? 'Local Donor',
+      'businessName': widget.userData['businessName'] ?? widget.userData['organizationName'] ?? widget.userData['distributorName'] ?? 'Local Hero',
       'donorContact': widget.userData['contact'] ?? '',
       'fullAddress': widget.userData['fullAddress'] ?? '',
       'latitude': donorLat,
@@ -88,7 +89,7 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
       'exactExpiryTime': Timestamp.fromDate(exactExpiryTime),
       'status': 'Available',
       'postedAt': Timestamp.now(),
-      'pickupOtp': generatedOtp, // ADDED BACK PIN
+      'pickupOtp': generatedOtp,
       'suggestedNgoId': bestNgoId,
       'suggestedNgoName': bestNgoName,
     });
