@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -10,27 +11,33 @@ class AdminDashboard extends StatefulWidget {
 }
 
 class _AdminDashboardState extends State<AdminDashboard> {
-  Future<void> _updateUserStatus(String uid, String status) async {
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'verificationStatus': status,
-        'isVerified': status == 'approved',
-      });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("User status updated to $status")));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating user: $e")));
+  Future<void> _updateStatus(String uid, String status) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      'verificationStatus': status,
+      'isVerified': status == 'approved',
+    });
+  }
+
+  Future<void> _deleteUser(String uid) async {
+    bool confirm = await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("TERMINATE ACCOUNT?"),
+        content: const Text("WARNING: This will permanently wipe this user and all their records from the entire system. This action is irreversible."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("CANCEL")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("PURGE ALL DATA", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
+        ],
+      )
+    ) ?? false;
+    if (confirm) {
+      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("User account terminated.")));
     }
   }
 
-  Future<void> _toggleSuspension(String uid, bool isSuspended) async {
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'isSuspended': isSuspended,
-      });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isSuspended ? "User blocked" : "User unblocked")));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error toggling suspension: $e")));
-    }
+  Future<void> _toggleSuspend(String uid, bool current) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({'isSuspended': !current});
   }
 
   @override
@@ -38,140 +45,105 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text("CONTROL CENTER", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        backgroundColor: Colors.transparent, elevation: 0,
+        title: const Text("SYSTEM AUTHORITY", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2)),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('users').snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Text("Access Denied: Please update Firestore Rules in Firebase Console.\nError: ${snapshot.error}", 
-                style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center),
-            ));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Colors.greenAccent));
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("No users found in system.", style: TextStyle(color: Colors.white38)));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData) return const Center(child: Text("No data found.", style: TextStyle(color: Colors.white24)));
+          
+          var users = snapshot.data!.docs;
+          
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('donations').snapshots(),
+            builder: (context, donationSnap) {
+              int totalMeals = 0;
+              if (donationSnap.hasData) {
+                for (var d in donationSnap.data!.docs) {
+                  var data = d.data() as Map;
+                  if (data['status'] == 'Delivered' || data['status'] == 'Picked Up' || data['status'] == 'Accepted') {
+                    totalMeals += (data['quantity'] ?? 0) as int;
+                  }
+                }
+              }
 
-          var allUsers = snapshot.data!.docs;
-          int volunteers = allUsers.where((d) => (d.data() as Map)['role'] == 'Volunteer').length;
-          int ngos = allUsers.where((d) => (d.data() as Map)['role'] == 'NGO').length;
-          int donors = allUsers.where((d) => (d.data() as Map)['role'] == 'Donor').length;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("LIVE SYSTEM METRICS", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                const SizedBox(height: 20),
-                
-                Row(
-                  children: [
-                    _buildStatCard("Total Users", "${allUsers.length}", Icons.people, Colors.blue),
-                    const SizedBox(width: 15),
-                    _buildStatCard("Volunteers", "$volunteers", Icons.directions_bike, Colors.green),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                Row(
-                  children: [
-                    _buildStatCard("Donors", "$donors", Icons.restaurant, Colors.orange),
-                    const SizedBox(width: 15),
-                    _buildStatCard("NGO Hubs", "$ngos", Icons.corporate_fare, Colors.teal),
-                  ],
-                ),
-
-                const SizedBox(height: 40),
-                const Text("VERIFICATION QUEUE", style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                const SizedBox(height: 15),
-
-                // Pending List
-                ...allUsers.where((d) => (d.data() as Map)['verificationStatus'] == 'pending').map((doc) {
-                  var user = doc.data() as Map<String, dynamic>;
-                  String proof = user['verificationProofUrl'] ?? '';
-                  return _buildUserActionCard(doc.id, user, proof, true);
-                }).toList(),
-
-                if (allUsers.where((d) => (d.data() as Map)['verificationStatus'] == 'pending').isEmpty)
-                  const Text("No pending requests.", style: TextStyle(color: Colors.white24, fontSize: 12)),
-
-                const SizedBox(height: 40),
-                const Text("COMMUNITY MANAGEMENT", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                const SizedBox(height: 15),
-
-                // Active List
-                ...allUsers.where((d) => (d.data() as Map)['verificationStatus'] != 'pending').map((doc) {
-                  var user = doc.data() as Map<String, dynamic>;
-                  return _buildUserActionCard(doc.id, user, '', false);
-                }).toList(),
-                
-                const SizedBox(height: 50),
-              ],
-            ),
+              return ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Row(
+                    children: [
+                      _statCard("TOTAL USERS", "${users.length}", Icons.people, Colors.blue),
+                      const SizedBox(width: 10),
+                      _statCard("MEALS SAVED", "$totalMeals", Icons.fastfood, Colors.greenAccent),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  const Text("VERIFICATION QUEUE", style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ...users.where((u) => (u.data() as Map)['verificationStatus'] == 'pending').map((u) => _buildManageCard(u, true)),
+                  const SizedBox(height: 30),
+                  const Text("MANAGE COMMUNITY", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ...users.where((u) => (u.data() as Map)['verificationStatus'] != 'pending').map((u) => _buildManageCard(u, false)),
+                ],
+              );
+            }
           );
         },
       ),
     );
   }
 
-  Widget _buildUserActionCard(String uid, Map<String, dynamic> user, String proof, bool isPending) {
-    bool isSuspended = user['isSuspended'] ?? false;
-    int meals = user['deliveriesMade'] ?? user['donationsMade'] ?? user['deliveriesReceived'] ?? 0;
+  Widget _buildManageCard(DocumentSnapshot doc, bool isPending) {
+    var user = doc.data() as Map<String, dynamic>;
+    bool suspended = user['isSuspended'] ?? false;
+    String livePhoto = user['livePhotoUrl'] ?? '';
+    String social = user['socialMediaLink'] ?? '';
+    String proof = user['verificationProofUrl'] ?? '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isSuspended ? Colors.red.withOpacity(0.1) : Colors.white.withOpacity(0.05),
+        color: suspended ? Colors.red.withOpacity(0.1) : Colors.white.withOpacity(0.05), 
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: suspended ? Colors.red.withOpacity(0.3) : Colors.white10)
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              backgroundColor: Colors.white10,
-              child: Icon(
-                user['role'] == 'Volunteer' ? Icons.person : 
-                user['role'] == 'NGO' ? Icons.corporate_fare : Icons.store,
-                color: Colors.white70, size: 20,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(user['name'] ?? user['businessName'] ?? user['organizationName'] ?? 'Unknown', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text("${user['role']} • ${user['city']}", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                ],
               ),
-            ),
-            title: Text(user['name'] ?? user['organizationName'] ?? user['businessName'] ?? 'Unknown', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: Text("${user['role']} • ${user['rankScore'] ?? 0} pts • $meals Meals", style: const TextStyle(color: Colors.white38, fontSize: 12)),
-            trailing: proof.isNotEmpty ? 
-              GestureDetector(
-                onTap: () => _showImageDialog(proof),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.memory(base64Decode(proof), width: 50, height: 50, fit: BoxFit.cover),
-                ),
-              ) : null,
+              IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), onPressed: () => _deleteUser(doc.id)),
+            ],
           ),
+          if (social.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: InkWell(onTap: () => launchUrl(Uri.parse(social)), child: Text("🔗 Social: $social", style: const TextStyle(color: Colors.blueAccent, fontSize: 10, decoration: TextDecoration.underline)))),
           const SizedBox(height: 10),
+          Row(
+            children: [
+              if (livePhoto.isNotEmpty) Expanded(child: _imgPreview(livePhoto, "LIVE IDENTITY")),
+              if (proof.isNotEmpty) const SizedBox(width: 8),
+              if (proof.isNotEmpty) Expanded(child: _imgPreview(proof, "DOC PROOF")),
+            ],
+          ),
+          const SizedBox(height: 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (isPending) ...[
-                TextButton(onPressed: () => _updateUserStatus(uid, 'rejected'), child: const Text("REJECT", style: TextStyle(color: Colors.redAccent))),
+                TextButton(onPressed: () => _updateStatus(doc.id, 'rejected'), child: const Text("REJECT", style: TextStyle(color: Colors.redAccent))),
                 const SizedBox(width: 10),
-                ElevatedButton(onPressed: () => _updateUserStatus(uid, 'approved'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black), child: const Text("APPROVE")),
+                ElevatedButton(onPressed: () => _updateStatus(doc.id, 'approved'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent), child: const Text("APPROVE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
               ] else ...[
-                TextButton(
-                  onPressed: () => _toggleSuspension(uid, !isSuspended), 
-                  child: Text(isSuspended ? "ACTIVATE USER" : "BLOCK USER", style: TextStyle(color: isSuspended ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold))
-                ),
+                ElevatedButton(onPressed: () => _toggleSuspend(doc.id, suspended), style: ElevatedButton.styleFrom(backgroundColor: suspended ? Colors.green : Colors.orange), child: Text(suspended ? "ACTIVATE USER" : "SUSPEND USER", style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold))),
               ]
             ],
           )
@@ -180,25 +152,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _showImageDialog(String base64) {
-    showDialog(context: context, builder: (context) => Dialog(backgroundColor: Colors.black, child: Column(mainAxisSize: MainAxisSize.min, children: [Image.memory(base64Decode(base64)), TextButton(onPressed: () => Navigator.pop(context), child: const Text("CLOSE", style: TextStyle(color: Colors.white)))])));
+  Widget _imgPreview(String b64, String label) {
+    return Column(children: [Text(label, style: const TextStyle(color: Colors.white24, fontSize: 8)), const SizedBox(height: 4), GestureDetector(onTap: () => showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.black, child: Column(mainAxisSize: MainAxisSize.min, children: [AppBar(title: Text(label), backgroundColor: Colors.transparent), Image.memory(base64Decode(b64)), TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CLOSE", style: TextStyle(color: Colors.white)))]))), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(b64), height: 80, width: double.infinity, fit: BoxFit.cover)))]);
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(24), border: Border.all(color: color.withOpacity(0.2))),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 12),
-            Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-            Text(title, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ],
-        ),
-      ),
-    );
+  Widget _statCard(String t, String v, IconData i, Color c) {
+    return Expanded(child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: c.withOpacity(0.2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(i, color: c, size: 20), const SizedBox(height: 10), Text(v, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)), Text(t, style: const TextStyle(color: Colors.white54, fontSize: 8, fontWeight: FontWeight.bold))])));
   }
 }

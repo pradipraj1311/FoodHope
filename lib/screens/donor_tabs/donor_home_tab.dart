@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../../widgets/rank_motivational_banner.dart';
 import '../../widgets/countdown_timer_widget.dart';
 import 'widgets/post_food_sheet.dart';
@@ -14,12 +15,31 @@ class DonorHomeTab extends StatefulWidget {
 }
 
 class _DonorHomeTabState extends State<DonorHomeTab> {
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Senior Dev Refresh: Auto-refresh UI every minute to handle expiry logic
+    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    String city = widget.userData['city'] ?? 'Unknown';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RankMotivationalBanner(uid: widget.uid, city: widget.userData['city'] ?? 'Unknown', role: 'Donor'),
+        RankMotivationalBanner(uid: widget.uid, city: city, role: 'Donor'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), 
           child: SizedBox(
@@ -37,26 +57,69 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                 builder: (context) => PostFoodSheet(userData: widget.userData, uid: widget.uid)
               ), 
               icon: const Icon(Icons.add_circle, size: 28), 
-              label: const Text("Post Food Rescue", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))
+              label: const Text("Post Food Rescue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
             )
           )
         ),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), child: Text("Active Donations", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
+
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Text("NGO HUB DEMANDS 📢", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.teal)),
+        ),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('needs')
+              .where('city', isEqualTo: city)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text("No urgent demands from Hubs.", style: TextStyle(color: Colors.grey, fontSize: 11)),
+              );
+            }
+            return SizedBox(
+              height: 100,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: snapshot.data!.docs.map((doc) {
+                  var need = doc.data() as Map<String, dynamic>;
+                  return Container(
+                    width: 180,
+                    margin: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(16), 
+                      border: Border.all(color: Colors.teal.shade100)
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(need['ngoName'] ?? 'Hub', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.teal), overflow: TextOverflow.ellipsis),
+                        const Spacer(),
+                        Text("${need['mealsNeeded']} Meals Needed", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            );
+          },
+        ),
+
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), child: Text("Active Donations", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54))),
 
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            // SENIOR DEV FIX: Simple query + Local Filtering to stop infinite buffering
             stream: FirebaseFirestore.instance.collection('donations')
                 .where('donorUid', isEqualTo: widget.uid)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.orange));
-              
-              if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red, fontSize: 10)));
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No active postings.", style: TextStyle(color: Colors.grey)));
 
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("You have no active food postings.", style: TextStyle(color: Colors.grey)));
-
-              // Local Filtering for status
+              // SENIOR DEV FIX: Real-time Expiry Filter
               var activeDocs = snapshot.data!.docs.where((doc) {
                 var data = doc.data() as Map<String, dynamic>;
                 String status = data['status'] ?? '';
@@ -64,12 +127,7 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                 
                 if (isActive && data['exactExpiryTime'] != null) {
                   DateTime expiry = (data['exactExpiryTime'] as Timestamp).toDate();
-                  if (expiry.isBefore(DateTime.now())) {
-                    if (status == 'Available') {
-                      FirebaseFirestore.instance.collection('donations').doc(doc.id).update({'status': 'Expired'});
-                    }
-                    return false;
-                  }
+                  if (expiry.isBefore(DateTime.now())) return false; // Auto-hide expired
                 }
                 return isActive;
               }).toList();
@@ -81,16 +139,14 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                 itemCount: activeDocs.length,
                 itemBuilder: (context, index) {
                   var post = activeDocs[index]; 
-                  Map<String, dynamic> postData = post.data() as Map<String, dynamic>;
-                  String currentStatus = postData['status']; 
-                  
-                  bool isAccepted = currentStatus == 'Accepted';
-                  bool isInTransit = ['Picked Up', 'NGO Requested', 'En Route'].contains(currentStatus);
+                  Map<String, dynamic> data = post.data() as Map<String, dynamic>;
+                  String status = data['status'] ?? 'Available'; 
 
                   return Card(
-                    elevation: 2, 
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
-                    margin: const EdgeInsets.only(bottom: 15),
+                    elevation: 3, 
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade100)),
+                    margin: const EdgeInsets.only(bottom: 12),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -99,53 +155,31 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                             children: [
-                              Expanded(child: Text(postData['foodItem'] ?? 'Unknown Item', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), 
+                              Text(data['foodItem'] ?? 'Food Item', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), 
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), 
-                                decoration: BoxDecoration(
-                                  color: isInTransit ? Colors.purple.shade100 : (isAccepted ? Colors.blue.shade100 : Colors.green.shade100), 
-                                  borderRadius: BorderRadius.circular(10)
-                                ), 
-                                child: Text(
-                                  currentStatus == 'NGO Requested' ? 'Waiting for Hub' : currentStatus, 
-                                  style: TextStyle(color: isInTransit ? Colors.purple.shade800 : (isAccepted ? Colors.blue.shade800 : Colors.green.shade800), fontWeight: FontWeight.bold)
-                                )
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
+                                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), 
+                                child: Text(status, style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold))
                               )
                             ]
                           ),
-                          const SizedBox(height: 10), 
-                          Row(children: [const Icon(Icons.people, size: 16, color: Colors.orange), const SizedBox(width: 8), Text("Feeds ${postData['quantity'] ?? 0}")]),
-                          const SizedBox(height: 8), 
-                          CountdownTimerWidget(expiryTimestamp: postData['exactExpiryTime'] as Timestamp?),
+                          const SizedBox(height: 10),
+                          CountdownTimerWidget(expiryTimestamp: data['exactExpiryTime'] as Timestamp?),
                           
-                          if (currentStatus == 'Accepted') ...[
-                            const Divider(height: 20), 
+                          // FIXED: Pickup PIN display for Donor when Volunteer accepts
+                          if (status == 'Accepted') ...[
+                            const Divider(height: 30),
                             Container(
-                              width: double.infinity, 
-                              padding: const EdgeInsets.all(12), 
-                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red.shade200)), 
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red.shade100)),
                               child: Column(
                                 children: [
-                                  const Text("Give this PIN to the Volunteer:", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)), 
-                                  Text(
-                                    postData['pickupOtp'] ?? '----',
-                                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 8, color: Colors.red.shade900)
-                                  )
-                                ]
-                              )
-                            ), 
-                            const SizedBox(height: 8)
-                          ],
-                          
-                          if (currentStatus == 'Available') ...[
-                            const SizedBox(height: 15), 
-                            SizedBox(
-                              width: double.infinity, 
-                              child: OutlinedButton(
-                                onPressed: () async { await FirebaseFirestore.instance.collection('donations').doc(post.id).update({'status': 'Cancelled'}); }, 
-                                style: OutlinedButton.styleFrom(foregroundColor: Colors.red), 
-                                child: const Text("Cancel Donation")
-                              )
+                                  const Text("VOLUNTEER ON THE WAY - GIVE THIS PIN:", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 10)),
+                                  const SizedBox(height: 4),
+                                  Text(data['pickupOtp'] ?? '----', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 10, color: Colors.red)),
+                                ],
+                              ),
                             )
                           ]
                         ],

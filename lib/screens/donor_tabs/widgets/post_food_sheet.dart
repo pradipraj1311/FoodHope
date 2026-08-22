@@ -18,145 +18,146 @@ class PostFoodSheet extends StatefulWidget {
 class _PostFoodSheetState extends State<PostFoodSheet> {
   final TextEditingController foodItemController = TextEditingController();
   final TextEditingController quantityController = TextEditingController();
+  final TextEditingController notesController = TextEditingController();
+  
+  String foodType = 'Veg'; 
+  String? _foodPhotoBase64;
+  bool isProcessing = false;
 
-  String foodCategory = 'Veg Only';
-  String selectedExpiry = 'Within 2 Hours';
-  bool isFlashRescue = false;
-
-  XFile? _foodImage;
-
-  Future<void> _pickImage() async {
+  Future<void> _pickPhoto() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.camera, imageQuality: 25);
-    if (image != null) setState(() => _foodImage = image);
+    final XFile? image = await picker.pickImage(source: ImageSource.camera, imageQuality: 30);
+    if (image != null) {
+      final bytes = await image.readAsBytes();
+      setState(() {
+        _foodPhotoBase64 = base64Encode(bytes);
+      });
+    }
+  }
+
+  // Senior Dev: Advanced Address Deduplication
+  String _formatFullAddress() {
+    String business = (widget.userData['businessName'] ?? '').trim();
+    String addr = (widget.userData['exactAddress'] ?? '').trim();
+    String street = (widget.userData['streetName'] ?? '').trim();
+    String city = (widget.userData['city'] ?? '').trim();
+
+    List<String> rawParts = [business, addr, street, city];
+    List<String> cleanParts = [];
+    
+    for (var part in rawParts) {
+      if (part.isEmpty) continue;
+      
+      bool isDuplicate = false;
+      String lowerPart = part.toLowerCase();
+      
+      for (var existing in cleanParts) {
+        String lowerExisting = existing.toLowerCase();
+        // Check if the current part is inside an existing part OR vice versa
+        if (lowerExisting.contains(lowerPart) || lowerPart.contains(lowerExisting)) {
+          isDuplicate = true;
+          // If the new part is longer/more detailed, replace the existing one
+          if (lowerPart.contains(lowerExisting) && lowerPart.length > lowerExisting.length) {
+            int index = cleanParts.indexOf(existing);
+            cleanParts[index] = part;
+          }
+          break;
+        }
+      }
+      
+      if (!isDuplicate) {
+        cleanParts.add(part);
+      }
+    }
+    return cleanParts.join(', ');
   }
 
   Future<void> _publishDonation() async {
     if (foodItemController.text.isEmpty || quantityController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill title and quantity.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill basic food details")));
       return;
     }
+    setState(() => isProcessing = true);
 
-    showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.orange)));
+    showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator()));
 
-    DateTime now = DateTime.now(); 
-    DateTime exactExpiryTime = now;
-    if (selectedExpiry.contains('1 Hour')) exactExpiryTime = now.add(const Duration(hours: 1));
-    else if (selectedExpiry.contains('2 Hours')) exactExpiryTime = now.add(const Duration(hours: 2));
-    else if (selectedExpiry.contains('4 Hours')) exactExpiryTime = now.add(const Duration(hours: 4));
-    else exactExpiryTime = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    try {
+      DateTime now = DateTime.now(); 
+      DateTime expiry = now.add(const Duration(hours: 4)); 
 
-    double donorLat = (widget.userData['latitude'] ?? 0.0).toDouble();
-    double donorLon = (widget.userData['longitude'] ?? 0.0).toDouble();
-    
-    QuerySnapshot ngoSnapshot = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'NGO').get();
-    String? bestNgoId; 
-    String bestNgoName = "Direct Distribution"; 
-    double closestDistance = 9999.0;
+      double donorLat = (widget.userData['latitude'] ?? 0.0).toDouble();
+      double donorLon = (widget.userData['longitude'] ?? 0.0).toDouble();
+      
+      String pin = (1000 + Random().nextInt(9000)).toString();
+      String fullAddr = _formatFullAddress();
 
-    for (var doc in ngoSnapshot.docs) {
-      if (doc.id == widget.uid) continue; // Don't suggest yourself as the destination hub if you are an NGO posting food
-      Map<String, dynamic> ngo = doc.data() as Map<String, dynamic>;
-      double distKm = Geolocator.distanceBetween(donorLat, donorLon, (ngo['latitude'] ?? 0.0).toDouble(), (ngo['longitude'] ?? 0.0).toDouble()) / 1000;
-      if (distKm < 20.0 && distKm < closestDistance) { 
-        closestDistance = distKm; 
-        bestNgoId = doc.id; 
-        bestNgoName = ngo['organizationName'] ?? ngo['distributorName'] ?? 'NGO Hub'; 
+      await FirebaseFirestore.instance.collection('donations').add({
+        'donorUid': widget.uid,
+        'donorPhone': widget.userData['contact'] ?? '',
+        'businessName': widget.userData['businessName'] ?? widget.userData['name'] ?? 'Donor',
+        'fullAddress': fullAddr,
+        'city': widget.userData['city'],
+        'latitude': donorLat,
+        'longitude': donorLon,
+        'foodItem': foodItemController.text.trim(),
+        'foodType': foodType,
+        'foodPhoto': _foodPhotoBase64,
+        'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
+        'notes': notesController.text.trim(),
+        'exactExpiryTime': Timestamp.fromDate(expiry),
+        'status': 'Available',
+        'postedAt': FieldValue.serverTimestamp(),
+        'pickupOtp': pin,
+      });
+
+      if (mounted) {
+        Navigator.pop(context); 
+        Navigator.pop(context); 
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rescue is Live! 🚀 Thank you."), backgroundColor: Colors.green));
       }
-    }
-
-    String base64ImageString = '';
-    if (_foodImage != null) {
-      List<int> imageBytes = await _foodImage!.readAsBytes();
-      base64ImageString = base64Encode(imageBytes);
-    }
-
-    // GENERATE 4-DIGIT PIN
-    String generatedOtp = (1000 + Random().nextInt(9000)).toString();
-
-    await FirebaseFirestore.instance.collection('donations').add({
-      'donorUid': widget.uid,
-      'businessName': widget.userData['businessName'] ?? widget.userData['organizationName'] ?? widget.userData['distributorName'] ?? 'Local Hero',
-      'donorContact': widget.userData['contact'] ?? '',
-      'fullAddress': widget.userData['fullAddress'] ?? '',
-      'latitude': donorLat,
-      'longitude': donorLon,
-      'foodItem': foodItemController.text.trim(),
-      'quantity': int.tryParse(quantityController.text.trim()) ?? 0,
-      'category': foodCategory,
-      'isFlashRescue': isFlashRescue,
-      'photoUrl': base64ImageString,
-      'exactExpiryTime': Timestamp.fromDate(exactExpiryTime),
-      'status': 'Available',
-      'postedAt': Timestamp.now(),
-      'pickupOtp': generatedOtp,
-      'suggestedNgoId': bestNgoId,
-      'suggestedNgoName': bestNgoName,
-    });
-
-    if (mounted) {
-      Navigator.pop(context); // Close loading
-      Navigator.pop(context); // Close sheet
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isFlashRescue ? "🔥 FLASH RESCUE ACTIVATED!" : "Food Rescue Published!"),
-          backgroundColor: isFlashRescue ? Colors.red : Colors.green,
-        )
-      );
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => isProcessing = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
       child: SingleChildScrollView(
         child: Column(
-          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Center(child: Text("Post Surplus Food", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange))),
+            const SizedBox(height: 20),
+            TextField(controller: foodItemController, decoration: const InputDecoration(labelText: "Food Items*", border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))))),
+            const SizedBox(height: 15),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Post Food Rescue", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Switch.adaptive(
-                  value: isFlashRescue,
-                  activeColor: Colors.red,
-                  onChanged: (val) => setState(() => isFlashRescue = val),
+                Expanded(child: TextField(controller: quantityController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Est. People Fed*", border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)))))),
+                const SizedBox(width: 15),
+                DropdownButton<String>(
+                  value: foodType,
+                  items: ['Veg', 'Non-Veg'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (v) => setState(() => foodType = v!),
                 ),
               ],
             ),
             const SizedBox(height: 15),
-            TextField(controller: foodItemController, decoration: const InputDecoration(labelText: "What are you donating?*", border: OutlineInputBorder())),
-            const SizedBox(height: 10),
-            TextField(controller: quantityController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Feeds how many people?*", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(child: DropdownButtonFormField<String>(value: foodCategory, decoration: const InputDecoration(labelText: "Category"), items: ['Veg Only', 'Non-Veg', 'Both'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => foodCategory = v!))),
-                const SizedBox(width: 10),
-                Expanded(child: DropdownButtonFormField<String>(value: selectedExpiry, decoration: const InputDecoration(labelText: "Expiry"), items: ['Within 1 Hour', 'Within 2 Hours', 'Within 4 Hours'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => selectedExpiry = v!))),
-              ],
-            ),
-            const SizedBox(height: 20),
             GestureDetector(
-              onTap: _pickImage,
+              onTap: _pickPhoto,
               child: Container(
-                height: 100, width: double.infinity,
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.grey.shade300)),
-                child: _foodImage == null
-                    ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt, color: Colors.orange), Text("Take Food Photo")])
-                    : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text("Photo Ready")]),
+                height: 60, width: double.infinity,
+                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
+                child: Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.camera_alt, color: Colors.orange), const SizedBox(width: 10), Text(_foodPhotoBase64 == null ? "Add Food Photo" : "Photo Captured ✅")])),
               ),
             ),
             const SizedBox(height: 25),
-            SizedBox(
-              width: double.infinity, height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: isFlashRescue ? Colors.red.shade700 : Colors.orange.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                onPressed: _publishDonation,
-                child: Text(isFlashRescue ? "TRIGGER FLASH RESCUE 🔥" : "Publish Rescue", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-            ),
+            SizedBox(width: double.infinity, height: 60, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))), onPressed: isProcessing ? null : _publishDonation, child: const Text("PUBLISH RESCUE", style: TextStyle(fontWeight: FontWeight.bold)))),
             const SizedBox(height: 20),
           ],
         ),

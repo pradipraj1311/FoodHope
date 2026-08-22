@@ -34,16 +34,6 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
     _autoFetchLocation();
   }
 
-  @override
-  void dispose() {
-    businessNameController.dispose();
-    contactNameController.dispose();
-    phoneController.dispose();
-    buildingController.dispose();
-    streetController.dispose();
-    super.dispose();
-  }
-
   Future<void> _autoFetchLocation() async {
     setState(() => currentCity = "Locating...");
     try {
@@ -53,7 +43,6 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
         if (placemarks.isNotEmpty) {
           setState(() {
             currentCity = placemarks[0].locality ?? "Unknown City";
-            if (streetController.text.isEmpty) streetController.text = placemarks[0].street ?? "";
           });
         }
       }
@@ -67,7 +56,9 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
     final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 25);
     if (image != null) {
       List<int> imageBytes = await image.readAsBytes();
-      setState(() => _base64Image = base64Encode(imageBytes));
+      setState(() {
+        _base64Image = base64Encode(imageBytes);
+      });
     }
   }
 
@@ -83,8 +74,8 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
   }
 
   Future<void> saveProfile() async {
-    if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty || buildingController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all mandatory fields!")));
+    if (businessNameController.text.isEmpty || contactNameController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Name and Contact are required!")));
       return;
     }
     setState(() => isLoading = true);
@@ -101,10 +92,12 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
 
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // SENIOR DEV FIX: Always set rankScore and isAdmin to ensure leaderboard works
+      // Senior Developer Logic: Donors are auto-verified as a mark of respect for their contribution.
+      // We do not ask for live photos or social documents from donors.
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'profileImageUrl': _base64Image,
         'businessName': businessNameController.text.trim(),
+        'name': businessNameController.text.trim(), // Support generic name field
         'primaryContactName': contactNameController.text.trim(),
         'contact': phoneController.text.trim(),
         'exactAddress': buildingController.text.trim(),
@@ -114,8 +107,9 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
         'longitude': position?.longitude ?? 0.0,
         'city': city,
         'isProfileComplete': true,
+        'verificationStatus': 'approved', 
+        'isVerified': true,
         'rankScore': 0,
-        'impactPoints': 0,
         'donationsMade': 0,
         'isAdmin': false,
       });
@@ -134,60 +128,65 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text("Donor Setup"), automaticallyImplyLeading: false, elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
+      appBar: AppBar(
+        title: const Text("Donor Onboarding", style: TextStyle(fontWeight: FontWeight.bold)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: _pickImage,
-              child: CircleAvatar(
-                radius: 55,
-                backgroundColor: Colors.orange.shade50,
-                backgroundImage: _base64Image.isNotEmpty ? MemoryImage(base64Decode(_base64Image)) : null,
-                child: _base64Image.isEmpty ? const Icon(Icons.add_a_photo, size: 40, color: Colors.orange) : null,
+            Center(
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: CircleAvatar(
+                  radius: 50, backgroundColor: Colors.orange.shade50,
+                  backgroundImage: _base64Image.isNotEmpty ? MemoryImage(base64Decode(_base64Image)) : null,
+                  child: _base64Image.isEmpty ? const Icon(Icons.add_a_photo, color: Colors.orange, size: 30) : null,
+                ),
               ),
             ),
             const SizedBox(height: 30),
-            TextField(controller: businessNameController, decoration: const InputDecoration(labelText: "Business Name*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.business))),
+            const Text("Basic Information", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
-            TextField(controller: contactNameController, decoration: const InputDecoration(labelText: "Contact Person*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.person))),
+            TextField(controller: businessNameController, decoration: const InputDecoration(labelText: "Business/Hotel/Individual Name*", border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))))),
             const SizedBox(height: 15),
-            TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Phone Number*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone))),
+            TextField(controller: contactNameController, decoration: const InputDecoration(labelText: "Contact Person Name*", border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))))),
             const SizedBox(height: 15),
+            TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Phone Number", border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))))),
+            const SizedBox(height: 25),
             
-            DropdownButtonFormField<String>(
-              value: selectedDonorType,
-              decoration: const InputDecoration(labelText: "Business Category*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.category)),
-              items: donorTypes.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-              onChanged: (val) => setState(() => selectedDonorType = val!),
-            ),
-            
-            const SizedBox(height: 15),
-            TextField(controller: buildingController, decoration: const InputDecoration(labelText: "Building/Hostel Name*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.home))),
-            const SizedBox(height: 15),
-            TextField(controller: streetController, decoration: const InputDecoration(labelText: "Street / Road*", border: OutlineInputBorder(), prefixIcon: Icon(Icons.map))),
-            
+            const Text("Location", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16, color: Colors.red),
-                const SizedBox(width: 5),
-                Text("City: $currentCity", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
-                const Spacer(),
-                TextButton(onPressed: _autoFetchLocation, child: const Text("Refresh GPS"))
-              ],
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.orange),
+                  const SizedBox(width: 10),
+                  Text("City: $currentCity", style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
-            
-            const SizedBox(height: 20),
+            const SizedBox(height: 40),
             SizedBox(
               width: double.infinity, height: 60,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade700, 
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                ),
                 onPressed: isLoading ? null : saveProfile,
-                child: isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("FINISH SETUP ✨", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("START SAVING FOOD", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
+            const SizedBox(height: 20),
+            const Center(child: Text("Thank you for joining our mission!", style: TextStyle(color: Colors.grey, fontSize: 12))),
           ],
         ),
       ),

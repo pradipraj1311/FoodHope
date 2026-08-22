@@ -34,6 +34,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'email': user.email ?? '',
         'isProfileComplete': false,
+        'rankScore': 0, // Initialize ranking
+        'isAdmin': false,
       }, SetOptions(merge: true));
 
       if (!context.mounted) return;
@@ -170,7 +172,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 spacing: 12, runSpacing: 10,
                 children: [
                   _buildFeatureItem(Icons.verified, "Verified Users"),
-                  _buildFeatureItem(Icons.location_on, "Live Tracking"),
+                  _buildFeatureItem(Icons.location_city, "City Rank"), // FIXED: Global -> City
                   _buildFeatureItem(Icons.leaderboard, "Local Rankings"),
                 ],
               ),

@@ -5,37 +5,21 @@ class GamificationEngine {
 
   static Future<void> processVolunteerDelivery({
     required String uid,
-    required double distanceKm,
-    required int minsLeftAtPickup,
-    required bool choseRecommendedHub,
+    required int mealQuantity, // Passing meal quantity for accurate stats
   }) async {
-    int basePoints = 20;
-    int distanceBonus = distanceKm > 5 ? 15 : (distanceKm > 2 ? 10 : 5);
-    int urgencyBonus = minsLeftAtPickup < 60 ? 15 : (minsLeftAtPickup <= 180 ? 10 : 5);
-    int recommendationBonus = choseRecommendedHub ? 10 : 0;
-    
-    int totalPointsEarned = basePoints + distanceBonus + urgencyBonus + recommendationBonus;
-    await _updateUserScores(uid, impactPointsToAdd: totalPointsEarned, trustBoost: 2);
+    int pointsToAdd = 20 + (mealQuantity > 50 ? 15 : 5);
+    await _updateUserScores(uid, points: pointsToAdd, type: "delivery", quantity: mealQuantity);
   }
 
   static Future<void> processDonorDonation({
     required String uid,
     required int quantity,
   }) async {
-    int basePoints = 10;
-    int largeQuantityBonus = quantity >= 50 ? 10 : 0;
-    int totalPointsEarned = basePoints + 5 + largeQuantityBonus;
-
-    DocumentSnapshot doc = await _db.collection('users').doc(uid).get();
-    // Synchronized field name: donationsMade
-    int totalDonations = (doc.data() as Map<String, dynamic>)['donationsMade'] ?? 0;
-
-    if ((totalDonations + 1) % 5 == 0) totalPointsEarned += 50; 
-
-    await _updateUserScores(uid, impactPointsToAdd: totalPointsEarned, trustBoost: 2);
+    int pointsToAdd = 10 + (quantity > 50 ? 10 : 0);
+    await _updateUserScores(uid, points: pointsToAdd, type: "donation", quantity: quantity);
   }
 
-  static Future<void> _updateUserScores(String uid, {required int impactPointsToAdd, required int trustBoost}) async {
+  static Future<void> _updateUserScores(String uid, {required int points, required String type, required int quantity}) async {
     DocumentReference userRef = _db.collection('users').doc(uid);
 
     await _db.runTransaction((transaction) async {
@@ -43,23 +27,25 @@ class GamificationEngine {
       if (!snapshot.exists) return;
 
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-
       int currentPoints = data['impactPoints'] ?? 0;
-      int currentTrust = data['trustScore'] ?? 100;
-      int currentConsistency = data['consistencyScore'] ?? 0;
+      int totalMeals = data['totalMealsSaved'] ?? 0; // NEW: Track total meals (quantity)
 
-      int newPoints = (currentPoints + impactPointsToAdd).clamp(0, 999999);
-      int newTrust = (currentTrust + trustBoost).clamp(0, 100);
-      
-      // THE GOLDEN RANK FORMULA
-      int newRankScore = newPoints + (newTrust * 2) + currentConsistency;
+      int newPoints = (currentPoints + points).clamp(0, 999999);
+      int newMeals = totalMeals + quantity;
 
-      transaction.update(userRef, {
+      Map<String, dynamic> updates = {
         'impactPoints': newPoints,
-        'trustScore': newTrust,
-        'rankScore': newRankScore,
+        'rankScore': newPoints + 200, // Rank based on points
+        'totalMealsSaved': newMeals,
         'lastActiveAt': FieldValue.serverTimestamp(),
-      });
+      };
+
+      if (type == "delivery") updates['deliveriesMade'] = (data['deliveriesMade'] ?? 0) + 1;
+      if (type == "donation") updates['donationsMade'] = (data['donationsMade'] ?? 0) + 1;
+
+      transaction.update(userRef, updates);
+
+      // Squad activity logic remains same but with null safety...
     });
   }
 }

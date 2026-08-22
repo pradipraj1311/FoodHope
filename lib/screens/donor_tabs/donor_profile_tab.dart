@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
-import '../login_screen.dart';
 import '../landing_screen.dart';
 import '../gamification/impact_wrapped_screen.dart';
 import 'dart:convert';
@@ -22,194 +22,255 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
   bool isUploading = false;
 
   Future<void> _logout() async {
-    await FirebaseAuth.instance.signOut();
-    if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LandingScreen()), (route) => false);
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Logout"),
+        content: const Text("Are you sure you want to log out of your business account?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCEL")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("LOGOUT", style: TextStyle(color: Colors.red))),
+        ],
+      )
+    ) ?? false;
+
+    if (confirm) {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LandingScreen()), (route) => false);
+    }
   }
 
-  Future<void> _pickAndUploadImage() async {
+  void _shareImpact() {
+    int donations = widget.userData['donationsMade'] ?? 0;
+    int worth = donations * 50;
+    Share.share("Our business saved food worth ₹$worth through $donations donations on FoodHope! 💓 Join us. https://foodhope.app");
+  }
+
+  Future<void> _pickImage() async {
     try {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 25);
-
       if (pickedFile != null) {
         setState(() => isUploading = true);
-        List<int> imageBytes = await pickedFile.readAsBytes();
-        String base64Image = base64Encode(imageBytes);
-        await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': base64Image});
+        String base64 = base64Encode(await pickedFile.readAsBytes());
+        await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': base64});
         widget.onProfileUpdated();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Logo Updated!")));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload Failed: $e")));
     } finally {
-      setState(() => isUploading = false);
+      if (mounted) setState(() => isUploading = false);
     }
   }
 
-  Future<void> _removeProfileImage() async {
-    setState(() => isUploading = true);
-    await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'profileImageUrl': ''});
-    widget.onProfileUpdated();
-    setState(() => isUploading = false);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo Removed")));
-  }
+  void _showSettings() {
+    TextEditingController nameController = TextEditingController(text: widget.userData['businessName']);
+    TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName'] ?? '');
+    TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
+    TextEditingController buildingController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
+    TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
+    TextEditingController socialController = TextEditingController(text: widget.userData['socialMediaLink'] ?? '');
+    
+    final List<String> donorTypes = ['Restaurant', 'Hotel', 'Hostel Mess', 'Event / Wedding', 'Supermarket', 'Individual / Other'];
+    String selectedType = widget.userData['donorType'] ?? donorTypes[0];
 
-  Widget _requiredLabel(String text) {
-    return Text.rich(
-      TextSpan(
-        text: text, style: TextStyle(color: Colors.grey.shade700, fontSize: 16),
-        children: const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))],
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Settings", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextField(controller: nameController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Business Name")),
+                const SizedBox(height: 10),
+                TextField(controller: contactNameController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Contact Person")),
+                const SizedBox(height: 10),
+                TextField(controller: phoneController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Phone Number")),
+                const SizedBox(height: 15),
+                DropdownButtonFormField<String>(
+                  value: donorTypes.contains(selectedType) ? selectedType : donorTypes[0],
+                  decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Business Category"),
+                  items: donorTypes.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                  onChanged: (v) => setModalState(() => selectedType = v!),
+                ),
+                const SizedBox(height: 10),
+                TextField(controller: buildingController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Building/Hostel Name")),
+                const SizedBox(height: 10),
+                TextField(controller: streetController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Street / Area")),
+                const SizedBox(height: 10),
+                TextField(controller: socialController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Social Page Link")),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity, height: 55,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+                        'businessName': nameController.text.trim(),
+                        'primaryContactName': contactNameController.text.trim(),
+                        'contact': phoneController.text.trim(),
+                        'phone': phoneController.text.trim(),
+                        'exactAddress': buildingController.text.trim(),
+                        'streetName': streetController.text.trim(),
+                        'donorType': selectedType,
+                        'socialMediaLink': socialController.text.trim(),
+                      });
+                      widget.onProfileUpdated();
+                      if (mounted) Navigator.pop(context);
+                    },
+                    child: const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                ListTile(leading: const Icon(Icons.share, color: Colors.blue), title: const Text("Share Impact Certificate"), onTap: () { Navigator.pop(context); _shareImpact(); }),
+                TextButton(onPressed: _deleteAccount, child: const Text("Delete Account Permanently", style: TextStyle(color: Colors.red, fontSize: 12))),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  void _showEditProfileSheet() {
-    TextEditingController businessNameController = TextEditingController(text: widget.userData['businessName'] ?? '');
-    TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName'] ?? '');
-    TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
-    TextEditingController exactAddressController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
-    TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
-    
-    String selectedDonorType = widget.userData['donorType'] ?? 'Restaurant';
-    final List<String> donorTypes = ['Restaurant', 'Hotel', 'Hostel Mess', 'Event / Wedding', 'Supermarket', 'Individual / Other'];
-
-    showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text("Edit Business Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 15),
-                    TextField(controller: businessNameController, decoration: InputDecoration(label: _requiredLabel("Business/Entity Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: contactNameController, decoration: InputDecoration(label: _requiredLabel("Primary Contact Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(label: _requiredLabel("Phone Number"), border: const OutlineInputBorder())),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: selectedDonorType,
-                      decoration: const InputDecoration(labelText: "Business Category*", border: OutlineInputBorder()),
-                      items: donorTypes.map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
-                      onChanged: (val) => setModalState(() => selectedDonorType = val!),
-                    ),
-                    const Divider(height: 25, thickness: 2),
-                    TextField(controller: exactAddressController, decoration: InputDecoration(label: _requiredLabel("Building Name"), border: const OutlineInputBorder())), const SizedBox(height: 10),
-                    TextField(controller: streetController, decoration: InputDecoration(label: _requiredLabel("Street / Road"), border: const OutlineInputBorder())), const SizedBox(height: 25),
-                    SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white), onPressed: () async {
-                      if (businessNameController.text.isEmpty || contactNameController.text.isEmpty || phoneController.text.isEmpty || exactAddressController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields")));
-                        return;
-                      }
-                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
-                        'businessName': businessNameController.text.trim(), 
-                        'primaryContactName': contactNameController.text.trim(), 
-                        'contact': phoneController.text.trim(), 
-                        'exactAddress': exactAddressController.text.trim(), 
-                        'streetName': streetController.text.trim(), 
-                        'donorType': selectedDonorType
-                      });
-                      widget.onProfileUpdated();
-                      if (mounted) Navigator.pop(context);
-                    }, child: const Text("Save Changes"))), const SizedBox(height: 20),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+  Future<void> _deleteAccount() async {
+    bool confirm = await showDialog(context: context, builder: (context) => AlertDialog(title: const Text("Delete Account?"), content: const Text("This will permanently remove your business data. This cannot be undone."), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")), TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes", style: TextStyle(color: Colors.red)))])) ?? false;
+    if (confirm) {
+      await FirebaseFirestore.instance.collection('users').doc(widget.uid).delete();
+      await FirebaseAuth.instance.currentUser?.delete();
+      if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LandingScreen()), (route) => false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    String profileUrl = widget.userData['profileImageUrl'] ?? '';
-
-    ImageProvider? profileImage;
-    if (profileUrl.isNotEmpty) {
-      try { profileImage = MemoryImage(base64Decode(profileUrl)); } catch (e) { debugPrint("Error decoding image"); }
-    }
+    int donations = widget.userData['donationsMade'] ?? 0;
+    int points = widget.userData['rankScore'] ?? 0;
+    int worth = donations * 50;
+    String img = widget.userData['profileImageUrl'] ?? '';
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        // Header matching your screenshot perfectly
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Stack(
-              alignment: Alignment.bottomRight,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
-                  onTap: _pickAndUploadImage,
-                  child: CircleAvatar(radius: 45, backgroundColor: Colors.orange.shade100, backgroundImage: profileImage, child: profileImage == null ? const Icon(Icons.store, size: 40, color: Colors.orange) : null),
-                ),
-                if (profileUrl.isNotEmpty)
-                  Positioned(
-                    top: 0, right: 0,
-                    child: GestureDetector(
-                      onTap: _removeProfileImage,
-                      child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)),
-                    ),
+                  onTap: _pickImage,
+                  child: CircleAvatar(
+                    radius: 40, backgroundColor: Colors.orange.shade50,
+                    backgroundImage: img.isNotEmpty ? MemoryImage(base64Decode(img)) : null,
+                    child: img.isEmpty ? const Icon(Icons.business, size: 40, color: Colors.orange) : null,
                   ),
-                if (isUploading) const CircularProgressIndicator(color: Colors.orange),
+                ),
+                const SizedBox(height: 15),
+                Text(widget.userData['businessName'] ?? 'Donor', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(widget.userData['contact'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                Text(widget.userData['city'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),
-            ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200, foregroundColor: Colors.black87, elevation: 0), onPressed: _showEditProfileSheet, icon: const Icon(Icons.edit, size: 18), label: const Text("Edit Profile"))
+            ElevatedButton.icon(
+              onPressed: _showSettings,
+              icon: const Icon(Icons.settings, size: 16),
+              label: const Text("Settings"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey.shade100, 
+                foregroundColor: Colors.black,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+              ),
+            )
           ],
         ),
-        const SizedBox(height: 20),
-        Text(widget.userData['businessName'] ?? 'Donor', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text(widget.userData['contact'] ?? 'No Phone Number Saved', style: const TextStyle(color: Colors.grey, fontSize: 16)),
-        
-        const SizedBox(height: 20),
-        
+
+        const SizedBox(height: 25),
+
+        // Impact Wrapped
         GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ImpactWrappedScreen(userData: widget.userData))),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImpactWrappedScreen(userData: widget.userData))),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF1a2a6c), Color(0xFFb21f1f)]),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+              gradient: const LinearGradient(colors: [Color(0xFFEA580C), Color(0xFFFB923C)]),
+              borderRadius: BorderRadius.circular(15),
             ),
             child: Row(
               children: [
-                const Icon(Icons.auto_awesome, color: Colors.white, size: 30),
+                const Icon(Icons.auto_awesome, color: Colors.white, size: 24),
                 const SizedBox(width: 15),
-                Expanded(
+                const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Impact Wrapped 2026", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
-                      Text("See your donation vibe check ✨", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                      Text("Impact Wrapped 2026", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text("See your donation vibe check ✨", style: TextStyle(color: Colors.white70, fontSize: 11)),
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 12),
               ],
             ),
           ),
         ),
 
         const SizedBox(height: 20),
-        Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          child: Column(
-            children: [
-              ListTile(leading: const Icon(Icons.category, color: Colors.blue), title: const Text("Category"), trailing: Text(widget.userData['donorType'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold))),
-              const Divider(height: 0),
-              ListTile(leading: const Icon(Icons.home, color: Colors.orange), title: const Text("Location"), subtitle: Text("${widget.userData['exactAddress'] ?? 'Building'}\n${widget.userData['streetName'] ?? 'Street'}", style: const TextStyle(fontWeight: FontWeight.bold))),
-            ],
+
+        // Metrics Row: 3 Pastel Boxes
+        Row(
+          children: [
+            _buildMetricBox("Donations", "$donations", Icons.volunteer_activism, Colors.blue.shade50, Colors.blue.shade700),
+            const SizedBox(width: 10),
+            _buildMetricBox("Points", "$points", Icons.stars, Colors.amber.shade50, Colors.amber.shade800),
+            const SizedBox(width: 10),
+            _buildMetricBox("Saved Worth", "₹$worth", Icons.currency_rupee, Colors.green.shade50, Colors.green.shade700),
+          ],
+        ),
+
+        const SizedBox(height: 30),
+
+        // Logout Button (matching screenshot perfectly)
+        SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton.icon(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout, size: 20),
+            label: const Text("Log Out", style: TextStyle(fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFEBEE),
+              foregroundColor: Colors.red.shade900,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
           ),
         ),
-        const SizedBox(height: 30),
-        ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.red, padding: const EdgeInsets.all(15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: _logout, icon: const Icon(Icons.logout), label: const Text("Log Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)))
       ],
+    );
+  }
+
+  Widget _buildMetricBox(String label, String value, IconData icon, Color bg, Color textColor) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            Icon(icon, color: textColor, size: 26),
+            const SizedBox(height: 8),
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+            Text(label, style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.7), fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
     );
   }
 }

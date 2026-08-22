@@ -3,227 +3,99 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SquadLeaderboardScreen extends StatefulWidget {
   final String currentUserUid;
-  const SquadLeaderboardScreen({super.key, required this.currentUserUid});
+  final String userCity;
+  final String userRole;
+
+  const SquadLeaderboardScreen({
+    super.key, 
+    required this.currentUserUid, 
+    required this.userCity,
+    required this.userRole
+  });
 
   @override
   State<SquadLeaderboardScreen> createState() => _SquadLeaderboardScreenState();
 }
 
-class _SquadLeaderboardScreenState extends State<SquadLeaderboardScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _fadeController;
+class _SquadLeaderboardScreenState extends State<SquadLeaderboardScreen> {
+  String? mySquadId;
 
   @override
   void initState() {
     super.initState();
-    _fadeController = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..forward();
+    _fetchUserSquad();
   }
 
-  @override
-  void dispose() {
-    _fadeController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildTopThree(List<DocumentSnapshot> squads) {
-    if (squads.isEmpty) return const SizedBox(height: 200);
-
-    List<DocumentSnapshot?> topThree = [
-      squads.isNotEmpty ? squads[0] : null,
-      squads.length > 1 ? squads[1] : null,
-      squads.length > 2 ? squads[2] : null,
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 30),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _buildPodiumSpot(topThree[1], 2, 120, const Color(0xFFC0C0C0)),
-          _buildPodiumSpot(topThree[0], 1, 170, const Color(0xFFFFD700)),
-          _buildPodiumSpot(topThree[2], 3, 100, const Color(0xFFCD7F32)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPodiumSpot(DocumentSnapshot? doc, int rank, double height, Color color) {
-    if (doc == null || !doc.exists) return SizedBox(height: height, width: 90);
-
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    String name = data['name'] ?? 'Squad';
-    String score = (data['totalRankScore'] ?? 0).toString();
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: height),
-      duration: Duration(milliseconds: 1000 + (rank * 200)),
-      curve: Curves.elasticOut,
-      builder: (context, val, child) {
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                shape: BoxShape.circle,
-                border: Border.all(color: color, width: 2),
-              ),
-              child: Icon(Icons.groups, color: color, size: rank == 1 ? 40 : 30),
-            ),
-            const SizedBox(height: 8),
-            Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.white), overflow: TextOverflow.ellipsis),
-            Text("$score pts", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-            const SizedBox(height: 12),
-            Container(
-              width: rank == 1 ? 100 : 85,
-              height: val,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [color, color.withOpacity(0.4)],
-                ),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Center(child: Text("$rank", style: const TextStyle(color: Colors.white70, fontSize: 30, fontWeight: FontWeight.bold))),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildListTile(DocumentSnapshot doc, int rank, String? mySquadId) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    bool isMySquad = doc.id == mySquadId;
-    String name = data['name'] ?? 'Squad';
-    int points = data['totalRankScore'] ?? 0;
-    int memberCount = (data['members'] as List?)?.length ?? 0;
-
-    return FadeTransition(
-      opacity: _fadeController,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12, left: 20, right: 20),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isMySquad ? Colors.white : Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(24),
-          border: isMySquad ? Border.all(color: Colors.blueAccent, width: 2) : null,
-          boxShadow: [
-            BoxShadow(
-              color: isMySquad ? Colors.blueAccent.withOpacity(0.2) : Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
-            )
-          ],
-        ),
-        child: Row(
-          children: [
-            Text("#$rank", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.grey.shade400)),
-            const SizedBox(width: 15),
-            const CircleAvatar(
-              radius: 22,
-              backgroundColor: Colors.blueGrey,
-              child: Icon(Icons.groups, color: Colors.white),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text("$memberCount Members", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text("$points", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.black87)),
-                const Text("PTS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+  void _fetchUserSquad() async {
+    var doc = await FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).get();
+    if (doc.exists) {
+      if (mounted) setState(() => mySquadId = doc.data()?['squadId']);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(widget.currentUserUid).get(),
-      builder: (context, userSnap) {
-        String? mySquadId;
-        if (userSnap.hasData && userSnap.data!.exists) {
-          mySquadId = (userSnap.data!.data() as Map<String, dynamic>)['squadId'];
-        }
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Column(
+          children: [
+            Text("${widget.userCity.toUpperCase()} SQUADS", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            Text("${widget.userRole} Community", style: const TextStyle(color: Colors.white54, fontSize: 10)),
+          ],
+        ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context)),
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        // SENIOR DEV FIX: Simplified query to prevent index buffering errors during presentation
+        stream: FirebaseFirestore.instance.collection('squads')
+            .where('city', isEqualTo: widget.userCity)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No squads found.", style: TextStyle(color: Colors.white24)));
 
-        return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-              ),
-            ),
-            child: Column(
-              children: [
-                const SizedBox(height: 50),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios, color: Colors.white)),
-                      const Text("ECO-SQUADS", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                      const Icon(Icons.workspace_premium, color: Colors.blueAccent, size: 30),
-                    ],
-                  ),
+          // Local Filter and Sort for role-specific ranking
+          List<DocumentSnapshot> squads = snapshot.data!.docs.where((doc) {
+            return (doc.data() as Map)['role'] == widget.userRole;
+          }).toList();
+
+          if (squads.isEmpty) return Center(child: Text("No ${widget.userRole} squads in your city.", style: const TextStyle(color: Colors.white24)));
+
+          squads.sort((a, b) => ((b.data() as Map)['totalPoints'] ?? 0).compareTo((a.data() as Map)['totalPoints'] ?? 0));
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: squads.length,
+            itemBuilder: (context, index) {
+              var data = squads[index].data() as Map<String, dynamic>;
+              int pts = data['totalPoints'] ?? 0;
+              int members = data['memberCount'] ?? 0;
+              bool isMySquad = squads[index].id == mySquadId;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isMySquad ? Colors.blueAccent.withOpacity(0.1) : Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(20),
+                  border: isMySquad ? Border.all(color: Colors.blueAccent, width: 2) : null,
                 ),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('squads')
-                        .orderBy('totalRankScore', descending: true)
-                        .limit(20)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Colors.blueAccent));
-                      }
-
-                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                        return const Center(child: Text("No squads formed yet. Be the first! 🛡️", style: TextStyle(color: Colors.white70)));
-                      }
-
-                      List<DocumentSnapshot> allSquads = snapshot.data!.docs;
-                      List<DocumentSnapshot> topThree = allSquads.take(3).toList();
-                      List<DocumentSnapshot> theRest = allSquads.skip(3).toList();
-
-                      return CustomScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        slivers: [
-                          SliverToBoxAdapter(child: _buildTopThree(topThree)),
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildListTile(theRest[index], index + 4, mySquadId),
-                              childCount: theRest.length,
-                            ),
-                          ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 50)),
-                        ],
-                      );
-                    },
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: index == 0 ? Colors.amber : (index == 1 ? Colors.blueGrey : (index == 2 ? Colors.brown : Colors.white10)),
+                    child: Text("${index + 1}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
+                  title: Text(data['name'] ?? "Squad", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  subtitle: Text("$members Members • $pts Points", style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                  trailing: index < 3 ? const Icon(Icons.workspace_premium, color: Colors.amber) : null,
                 ),
-              ],
-            ),
-          ),
-        );
-      }
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
