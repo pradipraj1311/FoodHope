@@ -20,6 +20,7 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
   final TextEditingController streetController = TextEditingController();
   final TextEditingController socialMediaController = TextEditingController();
   
+  bool isVegOnly = true; // Senior Dev: Default to Veg Only for safety
   String _base64Image = '';
   String _verificationProof = ''; 
   String _livePhoto = ''; 
@@ -46,7 +47,6 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
   }
 
   Future<void> saveProfile() async {
-    // SENIOR DEV FIX: Mandatory Social Link or Doc Proof
     if (orgNameController.text.isEmpty || _livePhoto.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Name and Live Selfie are mandatory!")));
       return;
@@ -78,6 +78,7 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
         'latitude': position.latitude,
         'longitude': position.longitude,
         'city': city,
+        'isVegOnly': isVegOnly, // Stored preference
         'fullAddress': "${buildingController.text.trim()}, ${streetController.text.trim()}, $city",
         'isProfileComplete': true,
         'verificationStatus': 'pending', 
@@ -119,6 +120,21 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
             const SizedBox(height: 25),
             TextField(controller: orgNameController, decoration: const InputDecoration(labelText: "Organization Name*", border: OutlineInputBorder())),
             const SizedBox(height: 15),
+            
+            // Preference Toggle
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Strictly VEG Only Hub?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+                  Switch(value: isVegOnly, onChanged: (v) => setState(() => isVegOnly = v), activeColor: Colors.teal),
+                ],
+              ),
+            ),
+            const SizedBox(height: 15),
+
             TextField(controller: socialMediaController, decoration: const InputDecoration(labelText: "Social Media (Instagram/FB Link)*", hintText: "Compulsory if no document", border: OutlineInputBorder())),
             const SizedBox(height: 15),
             TextField(controller: buildingController, decoration: const InputDecoration(labelText: "Area / Building*", border: OutlineInputBorder())),

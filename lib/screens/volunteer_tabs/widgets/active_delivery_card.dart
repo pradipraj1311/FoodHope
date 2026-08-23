@@ -62,7 +62,6 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
     setState(() => _isProcessing = true);
     
     // Senior Dev Logic: Auto-transition for mock spots (Welfare homes/Labor camps)
-    // since they don't have an app to "Accept" the rescue.
     bool isMockSpot = spot['ngoUid'] == null;
     
     await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
@@ -104,13 +103,20 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
       stream: FirebaseFirestore.instance.collection('donations').where('volunteerUid', isEqualTo: widget.volunteerUid).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
-        var active = snapshot.data!.docs.where((d) => ['Accepted', 'Picked Up', 'NGO Requested', 'En Route'].contains(d['status'])).toList();
-        if (active.isEmpty) return const SizedBox.shrink();
+        
+        // SENIOR DEV FIX: Priority sort to handle the currently active mission first
+        var activeRescues = snapshot.data!.docs.where((d) {
+          String s = d['status'];
+          return ['Accepted', 'Picked Up', 'NGO Requested', 'En Route'].contains(s);
+        }).toList();
 
-        var donation = active.first;
+        if (activeRescues.isEmpty) return const SizedBox.shrink();
+
+        var donation = activeRescues.first;
         Map<String, dynamic> data = donation.data() as Map<String, dynamic>;
         String status = data['status'];
         String donationId = donation.id;
+        bool isNonVeg = data['foodType'] == 'Non-Veg';
 
         String displayAddress = data['fullAddress'] ?? "${data['exactAddress'] ?? ''}, ${data['city'] ?? ''}";
 
@@ -121,7 +127,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.15), blurRadius: 20)],
-            border: Border.all(color: Colors.green.shade100, width: 2),
+            border: Border.all(color: isNonVeg ? Colors.red.shade100 : Colors.green.shade100, width: 2),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,30 +135,39 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("MISSION: $status", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 11)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isNonVeg ? Colors.red.shade600 : Colors.green,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      isNonVeg ? "NON-VEG MISSION" : "VEG MISSION",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
+                    ),
+                  ),
                   if (status == 'Accepted') 
                     IconButton(icon: const Icon(Icons.help_outline, size: 16), onPressed: () => _emergencyBypass(donationId, data))
                 ],
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 10),
               Text(data['foodItem'] ?? 'Food', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Text("PICKUP FROM:", style: TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold)),
-              Text(displayAddress, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+              Text("PICKUP FROM: $displayAddress", style: const TextStyle(fontSize: 12, color: Colors.black87)),
               const Divider(height: 25),
 
               if (status == 'Accepted') ...[
-                const Text("Ask Donor for 4-Digit PIN:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                const Text("Ask Donor for 4-Digit PIN to start rescue:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(child: TextField(controller: _otpController, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: "PIN", border: OutlineInputBorder()))),
+                    Expanded(child: TextField(controller: _otpController, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: "Enter PIN", border: OutlineInputBorder()))),
                     const SizedBox(width: 10),
                     ElevatedButton(onPressed: () => _completePickup(donationId, data['pickupOtp']), style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text("VERIFY", style: TextStyle(color: Colors.white)))
                   ],
                 )
               ] 
               else if (status == 'Picked Up') ...[
-                const Text("SELECT DELIVERY HUB / SPOT Nearby:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal)),
+                const Text("WHERE TO DELIVER?", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal)),
                 const SizedBox(height: 10),
                 SizedBox(
                   height: 180,
@@ -160,15 +175,21 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                     stream: FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'NGO').where('isVerified', isEqualTo: true).snapshots(),
                     builder: (context, ngoSnap) {
                       List<Map<String, dynamic>> spots = NeedySpotsService.getNearbySpots(data['latitude'], data['longitude']);
+                      
                       if (ngoSnap.hasData) {
                         for (var doc in ngoSnap.data!.docs) {
                           var ngo = doc.data() as Map<String, dynamic>;
-                          if (doc.id == data['donorUid']) continue; // Can't deliver back to donor hub
+                          if (doc.id == data['donorUid']) continue; 
+                          
+                          // SENIOR DEV FIX: Strict Non-Veg Filter
+                          // If food is Non-Veg, skip NGOs that are 'isVegOnly'
+                          if (isNonVeg && ngo['isVegOnly'] == true) continue;
+
                           spots.add({
                             'name': ngo['organizationName'] ?? 'NGO Hub',
                             'ngoUid': doc.id,
                             'phone': ngo['contact'] ?? '',
-                            'type': 'Verified Hub',
+                            'type': ngo['isVegOnly'] == true ? 'Verified Hub (Veg Only)' : 'Verified Hub',
                             'distKm': 0.0 
                           });
                         }
@@ -181,7 +202,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                           subtitle: Text(spots[i]['type'], style: const TextStyle(fontSize: 10)),
                           trailing: ElevatedButton(
                             onPressed: _isProcessing ? null : () => _requestNgo(donationId, spots[i]),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
                             child: const Text("SELECT", style: TextStyle(fontSize: 10, color: Colors.white)),
                           ),
                         ),
@@ -216,11 +237,11 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("NGO ACCEPTED - PROCEED TO DELIVERY 🚀", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 10)),
+                      const Text("NGO ACCEPTED - DELIVER NOW 🚀", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 10)),
                       const SizedBox(height: 8),
-                      Text("HUB: ${data['selectedNgoName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text("DESTINATION: ${data['selectedNgoName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const SizedBox(height: 10),
-                      SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () => _markDelivered(donationId, data), icon: const Icon(Icons.camera_alt), label: const Text("DELIVERED (UPLOAD PROOF)"), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white)))
+                      SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () => _markDelivered(donationId, data), icon: const Icon(Icons.camera_alt), label: const Text("ARRIVED & DELIVERED"), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white)))
                     ],
                   ),
                 )
