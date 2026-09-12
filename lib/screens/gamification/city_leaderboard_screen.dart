@@ -21,7 +21,6 @@ class CityLeaderboardScreen extends StatefulWidget {
 class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> {
   @override
   Widget build(BuildContext context) {
-    // SENIOR DEV FIX: Strict Role Filtering (No Mixing)
     Query query = FirebaseFirestore.instance.collection('users')
         .where('role', isEqualTo: widget.userRole);
     
@@ -49,7 +48,6 @@ class _CityLeaderboardScreenState extends State<CityLeaderboardScreen> {
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No heroes in this city yet.", style: TextStyle(color: Colors.white24)));
 
           List<DocumentSnapshot> users = snapshot.data!.docs.toList();
-          // Local Sort by points
           users.sort((a, b) => ((b.data() as Map)['rankScore'] ?? 0).compareTo((a.data() as Map)['rankScore'] ?? 0));
 
           return ListView.builder(

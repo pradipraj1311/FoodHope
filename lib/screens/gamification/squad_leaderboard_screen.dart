@@ -49,7 +49,6 @@ class _SquadLeaderboardScreenState extends State<SquadLeaderboardScreen> {
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // SENIOR DEV FIX: Simplified query to prevent index buffering errors during presentation
         stream: FirebaseFirestore.instance.collection('squads')
             .where('city', isEqualTo: widget.userCity)
             .snapshots(),
@@ -57,8 +56,7 @@ class _SquadLeaderboardScreenState extends State<SquadLeaderboardScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No squads found.", style: TextStyle(color: Colors.white24)));
 
-          // Local Filter and Sort for role-specific ranking
-          List<DocumentSnapshot> squads = snapshot.data!.docs.where((doc) {
+        List<DocumentSnapshot> squads = snapshot.data!.docs.where((doc) {
             return (doc.data() as Map)['role'] == widget.userRole;
           }).toList();
 

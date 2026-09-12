@@ -43,14 +43,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // --- SAVE INITIAL USER DATA (FIXED: Don't overwrite isProfileComplete) ---
   Future<void> _saveUserInitialData(User user) async {
     if (widget.role != null) {
       DocumentReference userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
       DocumentSnapshot doc = await userRef.get();
       
       if (!doc.exists) {
-        // Only set initial data if user doesn't exist
         await userRef.set({
           'uid': user.uid,
           'email': user.email,
@@ -60,7 +58,6 @@ class _LoginScreenState extends State<LoginScreen> {
           'createdAt': FieldValue.serverTimestamp(),
         });
       } else {
-        // If user exists, only update role if it's currently missing
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         if (data['role'] == null || data['role'].toString().isEmpty) {
           await userRef.update({'role': widget.role});
@@ -69,7 +66,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- STRICT ROUTING LOGIC ---
   Future<void> _routeUser(User user) async {
     await _saveUserInitialData(user);
 
@@ -113,7 +109,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- EMAIL AUTH ---
   Future<void> _submitEmailAuth() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill in all fields")));
@@ -162,7 +157,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- PHONE AUTH ---
   Future<void> _sendOtp() async {
     if (_phoneController.text.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enter a valid 10-digit number")));
@@ -201,7 +195,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- UI DIALOGS ---
   void _showVerificationSentDialog(String email) {
     showDialog(context: context, barrierDismissible: false, builder: (context) => AlertDialog(
         title: const Row(children: [Icon(Icons.mark_email_unread, color: Colors.green), SizedBox(width: 8), Text("Check Your Email")]),

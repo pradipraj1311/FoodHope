@@ -34,7 +34,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'email': user.email ?? '',
         'isProfileComplete': false,
-        'rankScore': 0, // Initialize ranking
+        'rankScore': 0,
         'isAdmin': false,
       }, SetOptions(merge: true));
 

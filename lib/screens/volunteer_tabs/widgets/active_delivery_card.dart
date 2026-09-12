@@ -61,7 +61,6 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
   Future<void> _requestNgo(String donationId, Map<String, dynamic> spot) async {
     setState(() => _isProcessing = true);
     
-    // Senior Dev Logic: Auto-transition for mock spots (Welfare homes/Labor camps)
     bool isMockSpot = spot['ngoUid'] == null;
     
     await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
@@ -104,7 +103,6 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
         
-        // SENIOR DEV FIX: Priority sort to handle the currently active mission first
         var activeRescues = snapshot.data!.docs.where((d) {
           String s = d['status'];
           return ['Accepted', 'Picked Up', 'NGO Requested', 'En Route'].contains(s);
@@ -181,8 +179,6 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                           var ngo = doc.data() as Map<String, dynamic>;
                           if (doc.id == data['donorUid']) continue; 
                           
-                          // SENIOR DEV FIX: Strict Non-Veg Filter
-                          // If food is Non-Veg, skip NGOs that are 'isVegOnly'
                           if (isNonVeg && ngo['isVegOnly'] == true) continue;
 
                           spots.add({
@@ -237,7 +233,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("NGO ACCEPTED - DELIVER NOW 🚀", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 10)),
+                      const Text("NGO ACCEPTED - DELIVER NOW ", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 10)),
                       const SizedBox(height: 8),
                       Text("DESTINATION: ${data['selectedNgoName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const SizedBox(height: 10),

@@ -4,7 +4,6 @@ import 'dart:math';
 class SquadService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // 1. Create a Role-Locked Squad
   static Future<String?> createSquad({
     required String name,
     required String description,
@@ -12,7 +11,6 @@ class SquadService {
     required String city,
     required String role, 
   }) async {
-    // Senior Dev Check: Prevent duplicate squad names in the same city and role
     QuerySnapshot existing = await _db.collection('squads')
         .where('city', isEqualTo: city)
         .where('role', isEqualTo: role)
@@ -49,7 +47,6 @@ class SquadService {
     return null; // Success
   }
 
-  // 2. Join Squad with Role Validation
   static Future<String?> joinSquadByCode(String code, String userUid) async {
     DocumentSnapshot userDoc = await _db.collection('users').doc(userUid).get();
     if (!userDoc.exists) return "User not found";
@@ -80,7 +77,7 @@ class SquadService {
         'squadName': squadData['name'],
       });
     });
-    return null; // Success
+    return null;
   }
 
   static Future<void> leaveSquad(String squadId, String userUid) async {

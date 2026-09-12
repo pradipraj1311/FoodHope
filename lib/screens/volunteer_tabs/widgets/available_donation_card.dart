@@ -73,7 +73,6 @@ class _AvailableDonationCardState extends State<AvailableDonationCard> with Sing
     final info = _calculateTimeAndDistance();
     final bool isFlash = widget.donation['isFlashRescue'] == true;
     
-    // SENIOR DEV FIX: Show Detailed Address
     final String detailedAddress = "${widget.donation['exactAddress'] ?? ''}, ${widget.donation['streetName'] ?? ''}, ${widget.donation['fullAddress'] ?? ''}";
 
     return StreamBuilder<DocumentSnapshot>(

@@ -128,7 +128,6 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // Classic Header matching your screenshot perfectly
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -166,7 +165,6 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
 
         const SizedBox(height: 25),
 
-        // Impact Wrapped
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImpactWrappedScreen(userData: widget.userData))),
           child: Container(
@@ -196,7 +194,6 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
 
         const SizedBox(height: 20),
 
-        // Metrics Row: 3 Pastel Boxes
         Row(
           children: [
             _buildMetricBox("Rescues", "$rescues", Icons.local_shipping, Colors.blue.shade50, Colors.blue.shade700),
@@ -209,7 +206,6 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
 
         const SizedBox(height: 30),
 
-        // Logout Button (Wide matching screenshot)
         SizedBox(
           width: double.infinity,
           height: 55,

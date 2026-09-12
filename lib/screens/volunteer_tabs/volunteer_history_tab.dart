@@ -33,7 +33,6 @@ class VolunteerHistoryTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // --- TOP STATS DASHBOARD ---
         StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('donations')
                 .where('volunteerUid', isEqualTo: uid)
@@ -49,7 +48,6 @@ class VolunteerHistoryTab extends StatelessWidget {
                 for (var doc in snapshot.data!.docs) {
                   totalMeals += (doc['quantity'] as num?)?.toInt() ?? 0;
                 }
-                // Tangible Metric: Assuming average ₹50 per meal
                 foodValue = totalMeals * 50;
               }
 
@@ -60,7 +58,6 @@ class VolunteerHistoryTab extends StatelessWidget {
                   children: [
                     _buildStatCard("Meals\nRescued", totalMeals.toString(), Icons.restaurant, Colors.orange.shade700),
 
-                    // REPLACED CO2 WITH TANGIBLE MONEY SAVED
                     _buildStatCard("Food Worth\nSaved", "₹$foodValue", Icons.currency_rupee, Colors.green.shade700),
 
                     _buildStatCard("Successful\nDeliveries", totalTrips.toString(), Icons.local_shipping, Colors.blue.shade700),
@@ -72,7 +69,6 @@ class VolunteerHistoryTab extends StatelessWidget {
 
         const Divider(height: 1, thickness: 1),
 
-        // --- HISTORY TIMELINE ---
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('donations')

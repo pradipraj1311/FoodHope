@@ -140,7 +140,6 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       children: [
-        // Classic Header
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,7 +172,6 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
 
         const SizedBox(height: 20),
 
-        // Impact Wrapped
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImpactWrappedScreen(userData: widget.userData))),
           child: Container(
@@ -203,7 +201,6 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
 
         const SizedBox(height: 20),
 
-        // Metrics Row: 3 Pastel Boxes
         Row(
           children: [
             _buildMetricBox("Impact", "$received", Icons.inventory_2, Colors.blue.shade50, Colors.blue.shade700),
@@ -216,7 +213,6 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
 
         const SizedBox(height: 30),
 
-        // Logout Button
         SizedBox(
           width: double.infinity,
           height: 50,

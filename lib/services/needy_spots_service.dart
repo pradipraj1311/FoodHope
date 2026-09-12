@@ -4,15 +4,14 @@ class NeedySpot {
   final String name;
   final double lat;
   final double lon;
-  final String type; // 'Labor Colony', 'Orphanage', 'Old Age Home'
+  final String type;
   final int capacity;
-  final String phone; // NEW: Added phone number
+  final String phone;
 
   NeedySpot({required this.name, required this.lat, required this.lon, required this.type, required this.capacity, required this.phone});
 }
 
 class NeedySpotsService {
-  // Mock Data (Expanded with real-world-style contact numbers)
   static final List<NeedySpot> _allSpots = [
     NeedySpot(name: 'Metro Site Labor Camp', lat: 22.705, lon: 72.870, type: 'Labor Colony', capacity: 150, phone: '9876543210'),
     NeedySpot(name: 'Shanti Nagar Labor Colony', lat: 22.695, lon: 72.858, type: 'Labor Colony', capacity: 220, phone: '8765432109'),
@@ -28,7 +27,7 @@ class NeedySpotsService {
     
     for (var spot in _allSpots) {
       double distance = Geolocator.distanceBetween(userLat, userLon, spot.lat, spot.lon) / 1000;
-      if (distance < 20.0) { // Within 20km
+      if (distance < 20.0) {
         nearby.add({
           'name': spot.name,
           'lat': spot.lat,
@@ -40,7 +39,6 @@ class NeedySpotsService {
         });
       }
     }
-    // Sort by proximity
     nearby.sort((a, b) => (a['distKm'] as double).compareTo(b['distKm'] as double));
     return nearby;
   }

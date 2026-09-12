@@ -14,7 +14,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final TextEditingController _passController = TextEditingController();
 
   void _login() {
-    // Reading credentials from .env for security
     final String adminUser = dotenv.get('ADMIN_USER', fallback: 'admin');
     final String adminPass = dotenv.get('ADMIN_PASS', fallback: 'password');
 
@@ -45,7 +44,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                 const Text("ADMIN CONTROL", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
                 const SizedBox(height: 30),
                 
-                // HIDDEN ADMIN ID
                 TextField(
                   controller: _userController, 
                   obscureText: true, 
@@ -60,7 +58,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                 ),
                 const SizedBox(height: 15),
                 
-                // HIDDEN SECURITY KEY
                 TextField(
                   controller: _passController, 
                   obscureText: true, 

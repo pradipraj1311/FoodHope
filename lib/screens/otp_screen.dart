@@ -31,8 +31,7 @@ class _OtpScreenState extends State<OtpScreen> {
   final TextEditingController otpController = TextEditingController();
   bool isLoading = false;
   
-  // Anti-Bot: Resend Cooldown
-  int _resendCooldown = 60; 
+  int _resendCooldown = 60;
   Timer? _timer;
 
   @override

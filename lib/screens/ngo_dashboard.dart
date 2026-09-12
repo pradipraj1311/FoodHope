@@ -46,7 +46,7 @@ class _NgoDashboardState extends State<NgoDashboard> {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added || (change.type == DocumentChangeType.modified && change.doc['status'] == 'NGO Requested')) {
            NotificationService.showRescueNotification(
-            title: "💓 INCOMING RESCUE",
+            title: " INCOMING RESCUE",
             body: "A volunteer is bringing food to your hub!",
           );
         }

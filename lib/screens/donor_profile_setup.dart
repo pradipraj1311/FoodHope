@@ -92,12 +92,10 @@ class _DonorProfileSetupState extends State<DonorProfileSetup> {
 
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // Senior Developer Logic: Donors are auto-verified as a mark of respect for their contribution.
-      // We do not ask for live photos or social documents from donors.
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'profileImageUrl': _base64Image,
         'businessName': businessNameController.text.trim(),
-        'name': businessNameController.text.trim(), // Support generic name field
+        'name': businessNameController.text.trim(),
         'primaryContactName': contactNameController.text.trim(),
         'contact': phoneController.text.trim(),
         'exactAddress': buildingController.text.trim(),

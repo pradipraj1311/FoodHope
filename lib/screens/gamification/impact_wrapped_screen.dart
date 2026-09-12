@@ -16,10 +16,8 @@ class _ImpactWrappedScreenState extends State<ImpactWrappedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic Month & Year
     String currentMonthYear = DateFormat('MMMM yyyy').format(DateTime.now());
 
-    // Extract Stats
     String role = widget.userData['role'] ?? 'Hero';
     int score = widget.userData['rankScore'] ?? 0;
     int count = 0;
@@ -27,8 +25,7 @@ class _ImpactWrappedScreenState extends State<ImpactWrappedScreen> {
     else if (role == 'Donor') count = widget.userData['donationsMade'] ?? 0;
     else count = widget.userData['deliveriesReceived'] ?? 0;
 
-    // Derived Stats
-    double co2Saved = count * 2.5; 
+    double co2Saved = count * 2.5;
     int peopleFed = count * 15;
 
     String title = "Food Guardian";

@@ -16,7 +16,6 @@ class _LivenessVerificationScreenState extends State<LivenessVerificationScreen>
   bool isScanning = false;
   String instruction = "Position your face in the frame";
 
-  // Simulate an AI scan for UI demonstration purposes
   void _startMockScan() async {
     setState(() { isScanning = true; instruction = "Scanning facial landmarks..."; });
     await Future.delayed(const Duration(seconds: 2));
@@ -29,13 +28,11 @@ class _LivenessVerificationScreenState extends State<LivenessVerificationScreen>
   }
 
   Future<void> _verifyUserAndProceed() async {
-    // 1. Mark them as verified in the database
     await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
       'isVerifiedVolunteer': true,
       'verifiedAt': DateTime.now(),
     });
 
-    // 2. Go back to the feed and trigger the accept delivery logic!
     if (mounted) {
       Navigator.pop(context);
       widget.onSuccess();
@@ -61,7 +58,6 @@ class _LivenessVerificationScreenState extends State<LivenessVerificationScreen>
             Text(instruction, style: TextStyle(color: Colors.green.shade400, fontSize: 16)),
             const SizedBox(height: 50),
 
-            // THE SCANNER UI
             Center(
               child: Container(
                 width: 250, height: 350,
@@ -93,7 +89,6 @@ class _LivenessVerificationScreenState extends State<LivenessVerificationScreen>
 
             const SizedBox(height: 20),
 
-            // --- THE DEVELOPER SKIP BUTTON ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
               child: SizedBox(

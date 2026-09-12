@@ -5,7 +5,7 @@ class GamificationEngine {
 
   static Future<void> processVolunteerDelivery({
     required String uid,
-    required int mealQuantity, // Passing meal quantity for accurate stats
+    required int mealQuantity,
   }) async {
     int pointsToAdd = 20 + (mealQuantity > 50 ? 15 : 5);
     await _updateUserScores(uid, points: pointsToAdd, type: "delivery", quantity: mealQuantity);
@@ -28,14 +28,14 @@ class GamificationEngine {
 
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
       int currentPoints = data['impactPoints'] ?? 0;
-      int totalMeals = data['totalMealsSaved'] ?? 0; // NEW: Track total meals (quantity)
+      int totalMeals = data['totalMealsSaved'] ?? 0;
 
       int newPoints = (currentPoints + points).clamp(0, 999999);
       int newMeals = totalMeals + quantity;
 
       Map<String, dynamic> updates = {
         'impactPoints': newPoints,
-        'rankScore': newPoints + 200, // Rank based on points
+        'rankScore': newPoints + 200,
         'totalMealsSaved': newMeals,
         'lastActiveAt': FieldValue.serverTimestamp(),
       };
@@ -45,7 +45,6 @@ class GamificationEngine {
 
       transaction.update(userRef, updates);
 
-      // Squad activity logic remains same but with null safety...
     });
   }
 }

@@ -36,13 +36,11 @@ class NgoReceivingTab extends StatelessWidget {
         'photoUrl': FieldValue.delete(),
       });
 
-      // NGO Points
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'rankScore': FieldValue.increment(10),
         'deliveriesReceived': FieldValue.increment(1),
       });
 
-      // Volunteer Points
       if (volunteerUid.isNotEmpty) {
         await FirebaseFirestore.instance.collection('users').doc(volunteerUid).update({
           'rankScore': FieldValue.increment(20),
@@ -50,11 +48,10 @@ class NgoReceivingTab extends StatelessWidget {
         });
       }
 
-      // Donor Points & Counter
       if (donorUid.isNotEmpty) {
         await FirebaseFirestore.instance.collection('users').doc(donorUid).update({
           'rankScore': FieldValue.increment(15),
-          'donationsMade': FieldValue.increment(1), // FIXED: Now tracking donor impact count
+          'donationsMade': FieldValue.increment(1),
         });
       }
 

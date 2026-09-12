@@ -35,7 +35,6 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
     }
   }
 
-  // Senior Dev: Advanced Address Deduplication
   String _formatFullAddress() {
     String business = (widget.userData['businessName'] ?? '').trim();
     String addr = (widget.userData['exactAddress'] ?? '').trim();
@@ -53,10 +52,8 @@ class _PostFoodSheetState extends State<PostFoodSheet> {
       
       for (var existing in cleanParts) {
         String lowerExisting = existing.toLowerCase();
-        // Check if the current part is inside an existing part OR vice versa
         if (lowerExisting.contains(lowerPart) || lowerPart.contains(lowerExisting)) {
           isDuplicate = true;
-          // If the new part is longer/more detailed, replace the existing one
           if (lowerPart.contains(lowerExisting) && lowerPart.length > lowerExisting.length) {
             int index = cleanParts.indexOf(existing);
             cleanParts[index] = part;

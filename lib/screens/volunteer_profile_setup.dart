@@ -18,8 +18,9 @@ class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   
+  bool isVegOnly = false;
   String _base64Image = '';
-  String _livePhoto = ''; // NEW: For Admin Verification
+  String _livePhoto = ''; 
   bool isLoading = false;
   String currentCity = "Fetching...";
 
@@ -71,8 +72,9 @@ class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
         'profileImageUrl': _base64Image,
         'livePhotoUrl': _livePhoto,
         'city': currentCity,
+        'isVegOnly': isVegOnly,
         'isProfileComplete': true,
-        'verificationStatus': 'pending', // Send to Admin Queue
+        'verificationStatus': 'pending', 
         'isVerified': false,
         'rankScore': 0,
         'impactPoints': 0,
@@ -108,6 +110,26 @@ class _VolunteerProfileSetupState extends State<VolunteerProfileSetup> {
             const SizedBox(height: 30),
             TextField(controller: nameController, decoration: const InputDecoration(labelText: "Full Name*", border: OutlineInputBorder())),
             const SizedBox(height: 15),
+            
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Veg-Only Hero?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                      Text("I will only pick up Vegetarian food", style: TextStyle(fontSize: 10, color: Colors.black54)),
+                    ],
+                  ),
+                  Switch(value: isVegOnly, onChanged: (v) => setState(() => isVegOnly = v), activeColor: Colors.green),
+                ],
+              ),
+            ),
+            const SizedBox(height: 15),
+
             TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Phone Number", border: OutlineInputBorder())),
             const SizedBox(height: 25),
             

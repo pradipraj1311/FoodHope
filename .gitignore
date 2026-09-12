@@ -24,6 +24,9 @@ ios/Flutter/Flutter.podspec
 *.log
 *.tmp
 
+# Sensitive Configs
 .env
 key.properties
 google-services.json
+GoogleService-Info.plist
+lib/firebase_options.dart

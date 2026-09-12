@@ -104,7 +104,7 @@ class _SquadsHubScreenState extends State<SquadsHubScreen> {
                 builder: (_) => SquadLeaderboardScreen(
                   currentUserUid: widget.uid, 
                   userCity: myCity,
-                  userRole: myRole, // FIXED: Separated by Role
+                  userRole: myRole,
                 )
               )
             ),

@@ -37,7 +37,6 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _saveUserToDatabase(String uid, String contactInfo, String name) async {
-    // SENIOR DEV FIX: Initialize ranking fields during signup
     await FirebaseFirestore.instance.collection('users').doc(uid).set({
       'uid': uid,
       'name': name.isEmpty ? "Unknown User" : name,

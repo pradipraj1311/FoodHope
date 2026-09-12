@@ -7,7 +7,7 @@ import 'widgets/active_delivery_card.dart';
 import 'widgets/available_donation_card.dart';
 import '../gamification/city_leaderboard_screen.dart';
 import '../gamification/squads_hub_screen.dart';
-import '../../widgets/rank_motivational_banner.dart';
+import '../../widgets/rank_banner.dart';
 
 class VolunteerHomeTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -42,6 +42,7 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
     double vLon = (widget.userData['longitude'] ?? 0.0).toDouble();
     String vehicleType = widget.userData['vehicleType'] ?? 'Scooter / Motorcycle';
     String city = widget.userData['city'] ?? 'Your City';
+    bool vIsVegOnly = widget.userData['isVegOnly'] ?? false;
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -88,7 +89,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                     const SizedBox(height: 25),
                     ActiveDeliveryCard(volunteerUid: widget.uid),
                     
-                    // NGO NEEDS SECTION (SENIOR DEV FEATURE)
                     const SizedBox(height: 25),
                     const Text("NGO HUB DEMANDS 📢", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)),
                     const SizedBox(height: 10),
@@ -154,22 +154,26 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.only(top: 50), child: Text("No active rescues.", style: TextStyle(color: Colors.grey)))));
 
-                List<DocumentSnapshot> freshDocs = snapshot.data!.docs.where((doc) {
+                List<DocumentSnapshot> filteredDocs = snapshot.data!.docs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
+                  
+                  // SENIOR DEV FILTER: Respect Veg-Only preference
+                  if (vIsVegOnly && data['foodType'] == 'Non-Veg') return false;
+
                   if (data['exactExpiryTime'] == null) return false;
                   DateTime expiry = (data['exactExpiryTime'] as Timestamp).toDate();
                   return expiry.isAfter(DateTime.now());
                 }).toList();
 
-                if (freshDocs.isEmpty) return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No fresh food available.", style: TextStyle(color: Colors.grey)))));
+                if (filteredDocs.isEmpty) return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No compatible fresh food available.", style: TextStyle(color: Colors.grey)))));
 
                 return SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      var doc = freshDocs[index];
+                      var doc = filteredDocs[index];
                       return AvailableDonationCard(donation: doc.data() as Map<String, dynamic>, donationId: doc.id, vLat: vLat, vLon: vLon, volunteerUid: widget.uid, vehicleType: vehicleType);
-                    }, childCount: freshDocs.length),
+                    }, childCount: filteredDocs.length),
                   ),
                 );
               },

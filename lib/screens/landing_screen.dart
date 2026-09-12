@@ -20,7 +20,6 @@ class LandingScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(),
-              // App Logo Placeholder
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
@@ -37,7 +36,6 @@ class LandingScreen extends StatelessWidget {
               ),
               const Spacer(),
               
-              // Features Grid
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30),
                 child: Column(
@@ -56,7 +54,6 @@ class LandingScreen extends StatelessWidget {
               
               const Spacer(),
               
-              // Action Button
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 40),
                 child: SizedBox(

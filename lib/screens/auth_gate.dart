@@ -53,7 +53,6 @@ class AuthGate extends StatelessWidget {
                   if (role == 'Donor') return const DonorProfileSetup();
                 }
 
-                // Verification Gate (STRICT) - Admins skip
                 if (vStatus != 'approved' && !isAdmin) {
                   return _buildVerificationTrackingScreen(vStatus);
                 }

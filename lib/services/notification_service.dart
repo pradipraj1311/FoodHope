@@ -14,7 +14,6 @@ class NotificationService {
 
     await _notificationsPlugin.initialize(initializationSettings);
 
-    // Request permissions for Android 13+
     if (Platform.isAndroid) {
       _notificationsPlugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
@@ -38,7 +37,7 @@ class NotificationService {
     );
 
     await _notificationsPlugin.show(
-      DateTime.now().millisecond, // Unique ID
+      DateTime.now().millisecond,
       title,
       body,
       platformChannelSpecifics,

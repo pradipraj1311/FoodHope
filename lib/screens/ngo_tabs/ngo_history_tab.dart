@@ -33,7 +33,6 @@ class NgoHistoryTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // --- TOP STATS DASHBOARD ---
         StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('donations')
                 .where('selectedNgoId', isEqualTo: uid)
@@ -49,7 +48,7 @@ class NgoHistoryTab extends StatelessWidget {
                 for (var doc in snapshot.data!.docs) {
                   totalMeals += (doc['quantity'] as num?)?.toInt() ?? 0;
                 }
-                foodValue = totalMeals * 50; // ₹50 per meal value
+                foodValue = totalMeals * 50;
               }
 
               return Container(
@@ -68,7 +67,6 @@ class NgoHistoryTab extends StatelessWidget {
 
         const Divider(height: 1, thickness: 1),
 
-        // --- HISTORY TIMELINE ---
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('donations')

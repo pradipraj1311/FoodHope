@@ -20,7 +20,7 @@ class _NgoProfileSetupState extends State<NgoProfileSetup> {
   final TextEditingController streetController = TextEditingController();
   final TextEditingController socialMediaController = TextEditingController();
   
-  bool isVegOnly = true; // Senior Dev: Default to Veg Only for safety
+  bool isVegOnly = true;
   String _base64Image = '';
   String _verificationProof = ''; 
   String _livePhoto = ''; 

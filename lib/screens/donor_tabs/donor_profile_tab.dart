@@ -156,7 +156,6 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // Header matching your screenshot perfectly
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,7 +193,6 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
 
         const SizedBox(height: 25),
 
-        // Impact Wrapped
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImpactWrappedScreen(userData: widget.userData))),
           child: Container(
@@ -224,7 +222,6 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
 
         const SizedBox(height: 20),
 
-        // Metrics Row: 3 Pastel Boxes
         Row(
           children: [
             _buildMetricBox("Donations", "$donations", Icons.volunteer_activism, Colors.blue.shade50, Colors.blue.shade700),
@@ -237,7 +234,6 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
 
         const SizedBox(height: 30),
 
-        // Logout Button (matching screenshot perfectly)
         SizedBox(
           width: double.infinity,
           height: 55,

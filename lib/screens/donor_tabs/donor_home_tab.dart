@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
-import '../../widgets/rank_motivational_banner.dart';
+import '../../widgets/rank_banner.dart';
 import '../../widgets/countdown_timer_widget.dart';
 import 'widgets/post_food_sheet.dart';
 
@@ -20,7 +20,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
   @override
   void initState() {
     super.initState();
-    // Senior Dev Refresh: Auto-refresh UI every minute to handle expiry logic
     _refreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
       if (mounted) setState(() {});
     });
@@ -119,7 +118,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.orange));
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No active postings.", style: TextStyle(color: Colors.grey)));
 
-              // SENIOR DEV FIX: Real-time Expiry Filter
               var activeDocs = snapshot.data!.docs.where((doc) {
                 var data = doc.data() as Map<String, dynamic>;
                 String status = data['status'] ?? '';
@@ -166,7 +164,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                           const SizedBox(height: 10),
                           CountdownTimerWidget(expiryTimestamp: data['exactExpiryTime'] as Timestamp?),
                           
-                          // FIXED: Pickup PIN display for Donor when Volunteer accepts
                           if (status == 'Accepted') ...[
                             const Divider(height: 30),
                             Container(

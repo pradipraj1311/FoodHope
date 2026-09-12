@@ -4,18 +4,17 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'screens/auth_gate.dart';
 import 'services/notification_service.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   
-  // Initialize Notifications
   await NotificationService.initialize();
 
-  // Initialize Firebase App Check (Critical for OTP Bot Protection)
-  // For Production, you must register your app in Firebase Console under App Check.
   await FirebaseAppCheck.instance.activate(
     androidProvider: AndroidProvider.playIntegrity,
     appleProvider: AppleProvider.deviceCheck,
@@ -24,7 +23,7 @@ void main() async {
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
-    debugPrint("Warning: .env file not found. Admin login will use default placeholders.");
+    debugPrint("Warning: .env file not found.");
   }
   
   runApp(const MyApp());
@@ -40,7 +39,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.green,
-        useMaterial3: true, // Modern UI
+        useMaterial3: true,
       ),
       home: const AuthGate(),
     );
