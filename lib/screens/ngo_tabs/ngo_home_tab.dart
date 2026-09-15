@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../../services/needy_spots_service.dart';
 import '../gamification/squads_hub_screen.dart';
-import '../../widgets/rank_banner.dart';
+import '../../widgets/rank_motivational_banner.dart';
 import '../donor_tabs/widgets/post_food_sheet.dart';
 import '../../widgets/countdown_timer_widget.dart';
 
@@ -34,6 +34,13 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
     _refreshTimer?.cancel();
     _needController.dispose();
     super.dispose();
+  }
+
+  Future<void> _launchMaps(double lat, double lon) async {
+    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$lon");
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Maps unavailable")));
+    }
   }
 
   Future<void> _raiseNeed({int? currentCount, bool isEdit = false}) async {
@@ -120,7 +127,6 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(hasActiveNeed ? "ACTIVE DEMAND 📢" : "RAISE FOOD DEMAND 📢", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                    Text(hasActiveNeed ? "Edit requirement" : "How many meals can you distribute?", style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
                     const SizedBox(height: 15),
                     Row(
                       children: [
@@ -148,7 +154,17 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
               .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No incoming rescues.", style: TextStyle(color: Colors.grey, fontSize: 12)));
-            var incoming = snapshot.data!.docs.where((d) => ['NGO Requested', 'En Route', 'Picked Up'].contains(d['status'])).toList();
+            
+            var incoming = snapshot.data!.docs.where((d) {
+              var data = d.data() as Map<String, dynamic>;
+              String status = data['status'];
+              // Senior Dev Fix: Auto-hide completed/expired
+              if (['Delivered', 'Expired', 'Cancelled'].contains(status)) return false;
+              if (data['exactExpiryTime'] != null) {
+                if ((data['exactExpiryTime'] as Timestamp).toDate().isBefore(DateTime.now())) return false;
+              }
+              return ['NGO Requested', 'En Route', 'Picked Up'].contains(status);
+            }).toList();
             
             if (incoming.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No active requests.", style: TextStyle(color: Colors.grey))));
 
@@ -162,6 +178,10 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: ListTile(
+                    leading: IconButton(
+                      icon: const Icon(Icons.map, color: Colors.blue),
+                      onPressed: () => _launchMaps(data['latitude'], data['longitude']),
+                    ),
                     title: Row(
                       children: [
                         Expanded(child: Text(data['foodItem'] ?? 'Food', style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -169,7 +189,6 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
                       ],
                     ),
                     subtitle: Text("Volunteer: ${data['volunteerName'] ?? 'Hero'}\nStatus: $status"),
-                    isThreeLine: true,
                     trailing: status == 'NGO Requested' 
                       ? ElevatedButton(
                           onPressed: isProcessing ? null : () => _acceptRescue(post.id),
@@ -186,7 +205,10 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
 
         const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text("Spot Network Nearby", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
         ...NeedySpotsService.getNearbySpots(ngoLat, ngoLon).map((spot) => ListTile(
-          leading: const Icon(Icons.location_on_outlined, color: Colors.orange),
+          leading: IconButton(
+            icon: const Icon(Icons.directions, color: Colors.blue),
+            onPressed: () => _launchMaps(spot['lat'], spot['lon']),
+          ),
           title: Text(spot['name'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)), 
           subtitle: Text("${spot['distKm'].toStringAsFixed(1)} km • ${spot['type']}"),
           trailing: IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => launchUrl(Uri.parse("tel:${spot['phone']}"))),

@@ -18,6 +18,13 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
   final TextEditingController _otpController = TextEditingController();
   bool _isProcessing = false;
 
+  Future<void> _openMap(double lat, double lon) async {
+    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$lon");
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Maps unavailable")));
+    }
+  }
+
   Future<void> _completePickup(String donationId, String correctOtp) async {
     if (_otpController.text.trim() == correctOtp) {
       await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
@@ -33,7 +40,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
 
   Future<void> _emergencyBypass(String donationId, Map<String, dynamic> data) async {
     if (data['otpBypass'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bypass already used for this rescue.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bypass already used.")));
       return;
     }
 
@@ -41,7 +48,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("OTP Bypass"),
-        content: const Text("Use this ONLY if the donor is unavailable. This is logged for security."),
+        content: const Text("Use this ONLY if the donor is unavailable. Logged for security."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("CANCEL")),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("BYPASS")),
@@ -60,14 +67,14 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
 
   Future<void> _requestNgo(String donationId, Map<String, dynamic> spot) async {
     setState(() => _isProcessing = true);
-    
     bool isMockSpot = spot['ngoUid'] == null;
-    
     await FirebaseFirestore.instance.collection('donations').doc(donationId).update({
       'status': isMockSpot ? 'En Route' : 'NGO Requested',
       'selectedNgoId': spot['ngoUid'] ?? spot['name'], 
       'selectedNgoName': spot['name'],
       'selectedNgoPhone': spot['phone'] ?? '',
+      'selectedNgoLat': spot['lat'],
+      'selectedNgoLon': spot['lon'],
       'requestedAt': FieldValue.serverTimestamp(),
     });
     setState(() => _isProcessing = false);
@@ -103,14 +110,19 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
         
-        var activeRescues = snapshot.data!.docs.where((d) {
+        var active = snapshot.data!.docs.where((d) {
           String s = d['status'];
+          // CRITICAL: Filter out completed/expired rescues immediately
+          if (['Delivered', 'Expired', 'Cancelled', 'NGO Accepted'].contains(s)) return false;
+          if (d['exactExpiryTime'] != null) {
+            if ((d['exactExpiryTime'] as Timestamp).toDate().isBefore(DateTime.now())) return false;
+          }
           return ['Accepted', 'Picked Up', 'NGO Requested', 'En Route'].contains(s);
         }).toList();
 
-        if (activeRescues.isEmpty) return const SizedBox.shrink();
+        if (active.isEmpty) return const SizedBox.shrink();
 
-        var donation = activeRescues.first;
+        var donation = active.first;
         Map<String, dynamic> data = donation.data() as Map<String, dynamic>;
         String status = data['status'];
         String donationId = donation.id;
@@ -122,8 +134,7 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
           margin: const EdgeInsets.only(bottom: 20),
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            color: Colors.white, borderRadius: BorderRadius.circular(24),
             boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.15), blurRadius: 20)],
             border: Border.all(color: isNonVeg ? Colors.red.shade100 : Colors.green.shade100, width: 2),
           ),
@@ -135,22 +146,31 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isNonVeg ? Colors.red.shade600 : Colors.green,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      isNonVeg ? "NON-VEG MISSION" : "VEG MISSION",
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
-                    ),
+                    decoration: BoxDecoration(color: isNonVeg ? Colors.red.shade600 : Colors.green, borderRadius: BorderRadius.circular(8)),
+                    child: Text(isNonVeg ? "NON-VEG MISSION" : "VEG MISSION", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
                   ),
-                  if (status == 'Accepted') 
-                    IconButton(icon: const Icon(Icons.help_outline, size: 16), onPressed: () => _emergencyBypass(donationId, data))
+                  Row(children: [
+                    Text("MISSION: $status", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 9)),
+                    if (status == 'Accepted') IconButton(icon: const Icon(Icons.help_outline, size: 16), onPressed: () => _emergencyBypass(donationId, data))
+                  ]),
                 ],
               ),
               const SizedBox(height: 10),
-              Text(data['foodItem'] ?? 'Food', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              Text("PICKUP FROM: $displayAddress", style: const TextStyle(fontSize: 12, color: Colors.black87)),
+              Text(data['foodItem'] ?? 'Food', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              
+              InkWell(
+                onTap: () => _openMap(data['latitude'], data['longitude']),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.map, color: Colors.blue, size: 18),
+                      const SizedBox(width: 5),
+                      Expanded(child: Text("Pickup: $displayAddress", style: const TextStyle(fontSize: 12, color: Colors.blue, decoration: TextDecoration.underline))),
+                    ],
+                  ),
+                ),
+              ),
               const Divider(height: 25),
 
               if (status == 'Accepted') ...[
@@ -162,7 +182,8 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                     const SizedBox(width: 10),
                     ElevatedButton(onPressed: () => _completePickup(donationId, data['pickupOtp']), style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text("VERIFY", style: TextStyle(color: Colors.white)))
                   ],
-                )
+                ),
+                if (data['donorPhone'] != null) TextButton.icon(onPressed: () => launchUrl(Uri.parse("tel:${data['donorPhone']}")), icon: const Icon(Icons.call, size: 14), label: const Text("Call Donor", style: TextStyle(fontSize: 10)))
               ] 
               else if (status == 'Picked Up') ...[
                 const Text("WHERE TO DELIVER?", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal)),
@@ -173,21 +194,12 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                     stream: FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'NGO').where('isVerified', isEqualTo: true).snapshots(),
                     builder: (context, ngoSnap) {
                       List<Map<String, dynamic>> spots = NeedySpotsService.getNearbySpots(data['latitude'], data['longitude']);
-                      
                       if (ngoSnap.hasData) {
                         for (var doc in ngoSnap.data!.docs) {
                           var ngo = doc.data() as Map<String, dynamic>;
                           if (doc.id == data['donorUid']) continue; 
-                          
                           if (isNonVeg && ngo['isVegOnly'] == true) continue;
-
-                          spots.add({
-                            'name': ngo['organizationName'] ?? 'NGO Hub',
-                            'ngoUid': doc.id,
-                            'phone': ngo['contact'] ?? '',
-                            'type': ngo['isVegOnly'] == true ? 'Verified Hub (Veg Only)' : 'Verified Hub',
-                            'distKm': 0.0 
-                          });
+                          spots.add({'name': ngo['organizationName'] ?? 'NGO Hub', 'ngoUid': doc.id, 'phone': ngo['contact'] ?? '', 'type': ngo['isVegOnly'] == true ? 'Hub (Veg)' : 'Hub', 'lat': ngo['latitude'], 'lon': ngo['longitude']});
                         }
                       }
                       return ListView.builder(
@@ -195,7 +207,8 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                         itemBuilder: (context, i) => ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(spots[i]['name'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                          subtitle: Text(spots[i]['type'], style: const TextStyle(fontSize: 10)),
+                          subtitle: Text("${spots[i]['type']} • Click to View Map", style: const TextStyle(fontSize: 10)),
+                          onTap: () => _openMap(spots[i]['lat'], spots[i]['lon']),
                           trailing: ElevatedButton(
                             onPressed: _isProcessing ? null : () => _requestNgo(donationId, spots[i]),
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
@@ -215,13 +228,10 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                       const SizedBox(height: 15),
                       Text("Waiting for ${data['selectedNgoName']} to accept...", textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.teal)),
                       const SizedBox(height: 10),
-                      if (data['selectedNgoPhone'] != null && data['selectedNgoPhone'] != '') 
-                        ElevatedButton.icon(
-                          onPressed: () => launchUrl(Uri.parse("tel:${data['selectedNgoPhone']}")),
-                          icon: const Icon(Icons.call, size: 18),
-                          label: const Text("CALL HUB"),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                        )
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => launchUrl(Uri.parse("tel:${data['selectedNgoPhone']}"))),
+                        IconButton(icon: const Icon(Icons.map, color: Colors.blue), onPressed: () => _openMap(data['selectedNgoLat'], data['selectedNgoLon'])),
+                      ])
                     ],
                   ),
                 )
@@ -233,10 +243,13 @@ class _ActiveDeliveryCardState extends State<ActiveDeliveryCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("NGO ACCEPTED - DELIVER NOW ", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 10)),
+                      const Text("NGO ACCEPTED - DELIVER NOW 🚀", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 10)),
                       const SizedBox(height: 8),
-                      Text("DESTINATION: ${data['selectedNgoName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 10),
+                      InkWell(
+                        onTap: () => _openMap(data['selectedNgoLat'], data['selectedNgoLon']),
+                        child: Text("📍 DESTINATION: ${data['selectedNgoName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue, decoration: TextDecoration.underline)),
+                      ),
+                      const SizedBox(height: 15),
                       SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () => _markDelivered(donationId, data), icon: const Icon(Icons.camera_alt), label: const Text("ARRIVED & DELIVERED"), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white)))
                     ],
                   ),
