@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../../services/needy_spots_service.dart';
 import '../gamification/squads_hub_screen.dart';
-import '../../widgets/rank_motivational_banner.dart';
+import '../../widgets/rank_banner.dart';
 import '../donor_tabs/widgets/post_food_sheet.dart';
 import '../../widgets/countdown_timer_widget.dart';
 
@@ -158,7 +158,6 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
             var incoming = snapshot.data!.docs.where((d) {
               var data = d.data() as Map<String, dynamic>;
               String status = data['status'];
-              // Senior Dev Fix: Auto-hide completed/expired
               if (['Delivered', 'Expired', 'Cancelled'].contains(status)) return false;
               if (data['exactExpiryTime'] != null) {
                 if ((data['exactExpiryTime'] as Timestamp).toDate().isBefore(DateTime.now())) return false;

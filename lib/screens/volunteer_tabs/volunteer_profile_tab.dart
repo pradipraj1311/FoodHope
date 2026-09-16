@@ -63,9 +63,71 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     }
   }
 
+  void _requestAccountDeletion() async {
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("DELETE ACCOUNT?"),
+        content: const Text("Your account will be scheduled for deletion. It will be permanently removed after 30 days. If you log back in within this period, the request will be automatically cancelled."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCEL")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("DELETE", style: TextStyle(color: Colors.red))),
+        ],
+      )
+    ) ?? false;
+
+    if (confirm) {
+      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+        'deletionRequestedAt': FieldValue.serverTimestamp(),
+      });
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account deletion requested. Logging out."), backgroundColor: Colors.orange));
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LandingScreen()), (route) => false);
+      }
+    }
+  }
+
+  void _showReportDialog() {
+    final TextEditingController reportController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Report an Issue / User"),
+        content: TextField(
+          controller: reportController,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: "Describe the issue or user behavior...", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            onPressed: () async {
+              if (reportController.text.trim().isNotEmpty) {
+                await FirebaseFirestore.instance.collection('reports').add({
+                  'reporterUid': widget.uid,
+                  'reporterName': widget.userData['name'],
+                  'reporterRole': 'Volunteer',
+                  'issue': reportController.text.trim(),
+                  'timestamp': FieldValue.serverTimestamp(),
+                  'status': 'Open',
+                });
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Report submitted successfully."), backgroundColor: Colors.teal));
+                }
+              }
+            },
+            child: const Text("SUBMIT"),
+          )
+        ],
+      ),
+    );
+  }
+
   void _showSettings() {
     TextEditingController nameController = TextEditingController(text: widget.userData['name']);
-    TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? widget.userData['phone'] ?? '');
+    TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
     List<String> vehicleOptions = ['Bicycle', 'Scooter / Motorcycle', 'Car', 'Walking'];
     String selectedVehicle = widget.userData['vehicleType'] ?? vehicleOptions[1];
 
@@ -82,11 +144,11 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
               const SizedBox(height: 20),
               TextField(controller: nameController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Name")),
               const SizedBox(height: 10),
-              TextField(controller: phoneController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Phone Number")),
+              TextField(controller: phoneController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Phone")),
               const SizedBox(height: 15),
               DropdownButtonFormField<String>(
                 value: vehicleOptions.contains(selectedVehicle) ? selectedVehicle : vehicleOptions[1],
-                decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Transport Type"),
+                decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Transport"),
                 items: vehicleOptions.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
                 onChanged: (v) => setModalState(() => selectedVehicle = v!),
               ),
@@ -98,7 +160,6 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                     await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
                       'name': nameController.text.trim(),
                       'contact': phoneController.text.trim(),
-                      'phone': phoneController.text.trim(),
                       'vehicleType': selectedVehicle,
                     });
                     widget.onProfileUpdated();
@@ -108,8 +169,9 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                 ),
               ),
               const SizedBox(height: 10),
-              ListTile(leading: const Icon(Icons.share, color: Colors.blue), title: const Text("Share My Impact"), onTap: () { Navigator.pop(context); _shareImpact(); }),
-              TextButton(onPressed: () {}, child: const Text("Delete Account Permanently", style: TextStyle(color: Colors.red, fontSize: 12))),
+              ListTile(leading: const Icon(Icons.share, color: Colors.blue), title: const Text("Share Impact"), onTap: () { Navigator.pop(context); _shareImpact(); }),
+              ListTile(leading: const Icon(Icons.report_problem, color: Colors.orange), title: const Text("Report User / Issue"), onTap: () { Navigator.pop(context); _showReportDialog(); }),
+              TextButton(onPressed: _requestAccountDeletion, child: const Text("Delete Account Permanently", style: TextStyle(color: Colors.red, fontSize: 12))),
               const SizedBox(height: 20),
             ],
           ),
@@ -122,7 +184,6 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
   Widget build(BuildContext context) {
     int rescues = widget.userData['deliveriesMade'] ?? 0;
     int points = widget.userData['rankScore'] ?? 0;
-    int worth = rescues * 50;
     String img = widget.userData['profileImageUrl'] ?? '';
 
     return ListView(
@@ -144,26 +205,32 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 15),
-                Text(widget.userData['name'] ?? 'Aman', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                Text(widget.userData['contact'] ?? widget.userData['phone'] ?? '9925812345', style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                Text(widget.userData['name'] ?? 'Volunteer', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 Text(widget.userData['city'] ?? 'Nadiad', style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),
-            ElevatedButton.icon(
-              onPressed: _showSettings,
-              icon: const Icon(Icons.settings, size: 16),
-              label: const Text("Settings"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey.shade100, 
-                foregroundColor: Colors.black,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-              ),
-            )
+            IconButton(onPressed: _showSettings, icon: const Icon(Icons.settings, color: Colors.blueGrey))
           ],
         ),
 
         const SizedBox(height: 25),
+        
+        // Honorary Badges Section
+        const Text("HONORARY BADGES 🎖️", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            if (rescues >= 1) _badgeChip("Bronze Lifesaver", Colors.orange.shade700),
+            if (rescues >= 10) _badgeChip("Silver Guardian", Colors.blueGrey),
+            if (rescues >= 50) _badgeChip("Gold Champion", Colors.amber.shade700),
+            if (points >= 2000) _badgeChip("Emerald Legend", Colors.teal),
+            if (rescues == 0) const Text("Complete a rescue to earn your first badge!", style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        ),
+
+        const SizedBox(height: 30),
 
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImpactWrappedScreen(userData: widget.userData))),
@@ -198,43 +265,50 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
           children: [
             _buildMetricBox("Rescues", "$rescues", Icons.local_shipping, Colors.blue.shade50, Colors.blue.shade700),
             const SizedBox(width: 10),
-            _buildMetricBox("Points", "$points", Icons.stars, Colors.amber.shade50, Colors.amber.shade800),
-            const SizedBox(width: 10),
-            _buildMetricBox("Saved Worth", "₹$worth", Icons.currency_rupee, Colors.green.shade50, Colors.green.shade700),
+            _buildMetricBox("Rank Pts", "$points", Icons.stars, Colors.amber.shade50, Colors.amber.shade800),
           ],
         ),
 
         const SizedBox(height: 30),
-
         SizedBox(
           width: double.infinity,
           height: 55,
           child: ElevatedButton.icon(
             onPressed: _logout,
-            icon: const Icon(Icons.logout, size: 20),
+            icon: const Icon(Icons.logout),
             label: const Text("Log Out", style: TextStyle(fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFEBEE),
-              foregroundColor: Colors.red.shade900,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.red.shade900, elevation: 0),
           ),
         ),
       ],
     );
   }
 
+  Widget _badgeChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(0.5))),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.workspace_premium, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMetricBox(String label, String value, IconData icon, Color bg, Color textColor) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(15)),
         child: Column(
           children: [
-            Icon(icon, color: textColor, size: 26),
+            Icon(icon, color: textColor, size: 28),
             const SizedBox(height: 8),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+            Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
             Text(label, style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.7), fontWeight: FontWeight.bold)),
           ],
         ),
