@@ -40,9 +40,7 @@ class AuthGate extends StatelessWidget {
                 bool isSuspended = data['isSuspended'] ?? false;
                 bool isAdmin = data['isAdmin'] ?? false;
 
-                // Senior Dev Logic: Account Deletion Grace Period Handler
                 if (data['deletionRequestedAt'] != null) {
-                   // User logged in within 30 days, auto-cancel deletion
                    FirebaseFirestore.instance.collection('users').doc(uid).update({
                      'deletionRequestedAt': FieldValue.delete(),
                    });

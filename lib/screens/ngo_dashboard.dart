@@ -9,6 +9,7 @@ import 'ngo_tabs/ngo_home_tab.dart';
 import 'ngo_tabs/ngo_history_tab.dart';
 import 'ngo_tabs/ngo_profile_tab.dart';
 import 'gamification/city_leaderboard_screen.dart';
+import 'gamification/squads_hub_screen.dart';
 import 'admin_login_screen.dart';
 import 'admin_dashboard.dart';
 import '../services/notification_service.dart';
@@ -46,7 +47,7 @@ class _NgoDashboardState extends State<NgoDashboard> {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added || (change.type == DocumentChangeType.modified && change.doc['status'] == 'NGO Requested')) {
            NotificationService.showRescueNotification(
-            title: " INCOMING RESCUE",
+            title: "💓 INCOMING RESCUE",
             body: "A volunteer is bringing food to your hub!",
           );
         }
@@ -115,10 +116,14 @@ class _NgoDashboardState extends State<NgoDashboard> {
               ),
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.groups_outlined, color: Colors.blueAccent),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SquadsHubScreen(userData: userData, uid: currentUser!.uid))),
+              ),
               if (userData['isAdmin'] == true)
                 IconButton(
                   icon: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey, size: 24),
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminDashboard())),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboard())),
                 ),
               IconButton(
                 icon: const Icon(Icons.emoji_events_outlined, color: Colors.amber, size: 26),

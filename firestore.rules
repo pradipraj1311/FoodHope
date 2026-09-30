@@ -11,11 +11,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow get, list, create: if isSignedIn();
       allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // SENIOR DEV FIX: Allow users to delete their own accounts
       allow delete: if isSignedIn() && request.auth.uid == userId;
     }
 
@@ -26,11 +23,27 @@ service cloud.firestore {
 
     match /squads/{squadId} {
       allow read, write: if isSignedIn();
-
-      // SENIOR DEV FIX: Allow access to activities sub-collection
       match /activities/{activityId} {
         allow read, write: if isSignedIn();
       }
+    }
+
+    match /food_suggestions/{suggestionId} {
+      allow read, list, write: if isSignedIn();
+    }
+
+    match /needs/{needId} {
+      allow read, list, write: if isSignedIn();
+    }
+
+    match /reports/{reportId} {
+      allow create: if isSignedIn();
+      allow read, list, update, delete: if isAdmin();
+    }
+
+    match /city_spots/{cityId} {
+      allow read, list: if isSignedIn();
+      allow write: if isSignedIn();
     }
   }
 }

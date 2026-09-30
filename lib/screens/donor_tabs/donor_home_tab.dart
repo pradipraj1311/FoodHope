@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../../widgets/rank_banner.dart';
 import '../../widgets/countdown_timer_widget.dart';
@@ -29,6 +30,13 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _launchMaps(double lat, double lon) async {
+    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$lon");
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Maps unavailable")));
+    }
   }
 
   @override
@@ -121,11 +129,13 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
               var activeDocs = snapshot.data!.docs.where((doc) {
                 var data = doc.data() as Map<String, dynamic>;
                 String status = data['status'] ?? '';
+                if (['Delivered', 'Expired', 'Cancelled', 'NGO Accepted'].contains(status)) return false;
+                
                 bool isActive = ['Available', 'Accepted', 'Picked Up', 'NGO Requested', 'En Route'].contains(status);
                 
                 if (isActive && data['exactExpiryTime'] != null) {
                   DateTime expiry = (data['exactExpiryTime'] as Timestamp).toDate();
-                  if (expiry.isBefore(DateTime.now())) return false; // Auto-hide expired
+                  if (expiry.isBefore(DateTime.now())) return false; 
                 }
                 return isActive;
               }).toList();
@@ -161,6 +171,24 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                               )
                             ]
                           ),
+                          const SizedBox(height: 10),
+                          // Proper location fix for donor view
+                          Row(
+                            children: [
+                              const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                              const SizedBox(width: 5),
+                              Expanded(child: Text(data['fullAddress'] ?? 'My Location', style: const TextStyle(fontSize: 12, color: Colors.black54))),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (data['selectedNgoLat'] != null)
+                            InkWell(
+                              onTap: () => _launchMaps(data['selectedNgoLat'], data['selectedNgoLon']),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 5.0),
+                                child: Text("📍 Tracking Destination: ${data['selectedNgoName'] ?? 'Hub'}", style: const TextStyle(fontSize: 11, color: Colors.blue, decoration: TextDecoration.underline)),
+                              ),
+                            ),
                           const SizedBox(height: 10),
                           CountdownTimerWidget(expiryTimestamp: data['exactExpiryTime'] as Timestamp?),
                           

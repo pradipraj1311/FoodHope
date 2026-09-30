@@ -62,7 +62,7 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
     _needController.clear();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(isEdit ? "Demand Updated!" : "Demand Raised! Expires in 4h."), 
+        content: Text(isEdit ? "Demand Updated!" : "Demand Raised!"), 
         backgroundColor: Colors.teal
       ));
     }
@@ -203,15 +203,28 @@ class _NgoHomeTabState extends State<NgoHomeTab> {
         ),
 
         const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text("Spot Network Nearby", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-        ...NeedySpotsService.getNearbySpots(ngoLat, ngoLon).map((spot) => ListTile(
-          leading: IconButton(
-            icon: const Icon(Icons.directions, color: Colors.blue),
-            onPressed: () => _launchMaps(spot['lat'], spot['lon']),
-          ),
-          title: Text(spot['name'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)), 
-          subtitle: Text("${spot['distKm'].toStringAsFixed(1)} km • ${spot['type']}"),
-          trailing: IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => launchUrl(Uri.parse("tel:${spot['phone']}"))),
-        )).toList(),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: NeedySpotsService.getNearbySpotsRealTime(ngoLat, ngoLon, city),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+            if (!snapshot.hasData || snapshot.data!.isEmpty) return const Padding(padding: EdgeInsets.all(20), child: Text("No real-time spots found nearby."));
+            
+            return Column(
+              children: snapshot.data!.map((spot) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: IconButton(
+                    icon: const Icon(Icons.directions, color: Colors.blue),
+                    onPressed: () => _launchMaps(spot['lat'], spot['lon']),
+                  ),
+                  title: Text(spot['name'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)), 
+                  subtitle: Text("${spot['distKm'].toStringAsFixed(1)} km • ${spot['type']}"),
+                  trailing: IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => launchUrl(Uri.parse("tel:${spot['phone']}"))),
+                ),
+              )).toList(),
+            );
+          },
+        ),
         const SizedBox(height: 50),
       ],
     );

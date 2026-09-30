@@ -70,7 +70,7 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
     TextEditingController buildingController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
     TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
     TextEditingController socialController = TextEditingController(text: widget.userData['socialMediaLink'] ?? '');
-    
+
     final List<String> donorTypes = ['Restaurant', 'Hotel', 'Hostel Mess', 'Event / Wedding', 'Supermarket', 'Individual / Other'];
     String selectedType = widget.userData['donorType'] ?? donorTypes[0];
 
@@ -182,7 +182,7 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
               icon: const Icon(Icons.settings, size: 16),
               label: const Text("Settings"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey.shade100, 
+                backgroundColor: Colors.grey.shade100,
                 foregroundColor: Colors.black,
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
