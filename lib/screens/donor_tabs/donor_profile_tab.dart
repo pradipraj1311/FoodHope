@@ -63,6 +63,43 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
     }
   }
 
+  void _showReportDialog() {
+    final TextEditingController reportController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Report an Issue"),
+        content: TextField(
+          controller: reportController,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: "Describe the issue or suspicious behavior...", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            onPressed: () async {
+              if (reportController.text.trim().isNotEmpty) {
+                await FirebaseFirestore.instance.collection('reports').add({
+                  'reporterUid': widget.uid,
+                  'reporterName': widget.userData['businessName'] ?? widget.userData['name'],
+                  'reporterRole': 'Donor',
+                  'issue': reportController.text.trim(),
+                  'timestamp': FieldValue.serverTimestamp(),
+                  'status': 'Open',
+                });
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Report submitted. Thank you for keeping FoodHope safe!"), backgroundColor: Colors.orange));
+                }
+              }
+            },
+            child: const Text("SUBMIT"),
+          )
+        ],
+      ),
+    );
+  }
+
   void _showSettings() {
     TextEditingController nameController = TextEditingController(text: widget.userData['businessName']);
     TextEditingController contactNameController = TextEditingController(text: widget.userData['primaryContactName'] ?? '');
@@ -111,9 +148,9 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                     onPressed: () async {
                       await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
                         'businessName': nameController.text.trim(),
+                        'name': nameController.text.trim(),
                         'primaryContactName': contactNameController.text.trim(),
                         'contact': phoneController.text.trim(),
-                        'phone': phoneController.text.trim(),
                         'exactAddress': buildingController.text.trim(),
                         'streetName': streetController.text.trim(),
                         'donorType': selectedType,
@@ -127,6 +164,7 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                 ),
                 const SizedBox(height: 15),
                 ListTile(leading: const Icon(Icons.share, color: Colors.blue), title: const Text("Share Impact Certificate"), onTap: () { Navigator.pop(context); _shareImpact(); }),
+                ListTile(leading: const Icon(Icons.report_problem, color: Colors.orange), title: const Text("Report an Issue"), onTap: () { Navigator.pop(context); _showReportDialog(); }),
                 TextButton(onPressed: _deleteAccount, child: const Text("Delete Account Permanently", style: TextStyle(color: Colors.red, fontSize: 12))),
                 const SizedBox(height: 20),
               ],

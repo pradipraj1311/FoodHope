@@ -172,7 +172,6 @@ class _DonorHomeTabState extends State<DonorHomeTab> {
                             ]
                           ),
                           const SizedBox(height: 10),
-                          // Proper location fix for donor view
                           Row(
                             children: [
                               const Icon(Icons.location_on, size: 14, color: Colors.grey),

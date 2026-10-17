@@ -172,7 +172,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 spacing: 12, runSpacing: 10,
                 children: [
                   _buildFeatureItem(Icons.verified, "Verified Users"),
-                  _buildFeatureItem(Icons.location_city, "City Rank"), // FIXED: Global -> City
+                  _buildFeatureItem(Icons.location_city, "City Rank"),
                   _buildFeatureItem(Icons.leaderboard, "Local Rankings"),
                 ],
               ),

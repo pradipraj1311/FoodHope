@@ -44,7 +44,7 @@ class SquadService {
         'squadName': name.trim(),
       });
     });
-    return null; // Success
+    return null;
   }
 
   static Future<String?> joinSquadByCode(String code, String userUid) async {

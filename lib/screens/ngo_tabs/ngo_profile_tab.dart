@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import '../landing_screen.dart';
-import '../gamification/impact_wrapped_screen.dart';
 import 'dart:convert';
 
 class NgoProfileTab extends StatefulWidget {
@@ -99,8 +98,8 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
               if (reportController.text.trim().isNotEmpty) {
                 await FirebaseFirestore.instance.collection('reports').add({
                   'reporterUid': widget.uid,
-                  'reporterName': widget.userData['organizationName'],
-                  'reporterRole': 'NGO',
+                  'reporterName': widget.userData['organizationName'] ?? widget.userData['name'],
+                  'reporterRole': widget.userData['role'] ?? 'NGO',
                   'issue': reportController.text.trim(),
                   'timestamp': FieldValue.serverTimestamp(),
                   'status': 'Open',
@@ -121,46 +120,68 @@ class _NgoProfileTabState extends State<NgoProfileTab> {
   void _showSettings() {
     TextEditingController nameController = TextEditingController(text: widget.userData['organizationName']);
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
+    TextEditingController buildingController = TextEditingController(text: widget.userData['exactAddress'] ?? '');
+    TextEditingController streetController = TextEditingController(text: widget.userData['streetName'] ?? '');
+    TextEditingController socialController = TextEditingController(text: widget.userData['socialMediaLink'] ?? '');
+    bool isVegOnly = widget.userData['isVegOnly'] ?? true;
     
     showModalBottomSheet(
       context: context, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Hub Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            TextField(controller: nameController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Organization Name")),
-            const SizedBox(height: 10),
-            TextField(controller: phoneController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Contact Number")),
-            const SizedBox(height: 25),
-            SizedBox(
-              width: double.infinity, height: 50,
-              child: ElevatedButton(
-                onPressed: () async {
-                  await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
-                    'organizationName': nameController.text.trim(),
-                    'contact': phoneController.text.trim(),
-                  });
-                  widget.onProfileUpdated();
-                  if (mounted) Navigator.pop(context);
-                },
-                child: const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Hub Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextField(controller: nameController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Organization Name")),
+                const SizedBox(height: 10),
+                TextField(controller: phoneController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Update Contact Number")),
+                const SizedBox(height: 10),
+                TextField(controller: buildingController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Building/Area")),
+                const SizedBox(height: 10),
+                TextField(controller: streetController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Street Name")),
+                const SizedBox(height: 10),
+                TextField(controller: socialController, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Social Media Link")),
+                const SizedBox(height: 15),
+                SwitchListTile(
+                  title: const Text("Veg Only Hub"),
+                  value: isVegOnly,
+                  onChanged: (v) => setModalState(() => isVegOnly = v),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity, height: 50,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+                        'organizationName': nameController.text.trim(),
+                        'contact': phoneController.text.trim(),
+                        'exactAddress': buildingController.text.trim(),
+                        'streetName': streetController.text.trim(),
+                        'socialMediaLink': socialController.text.trim(),
+                        'isVegOnly': isVegOnly,
+                      });
+                      widget.onProfileUpdated();
+                      if (mounted) Navigator.pop(context);
+                    },
+                    child: const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                ListTile(leading: const Icon(Icons.report_problem, color: Colors.orange), title: const Text("Report an Issue"), onTap: () { Navigator.pop(context); _showReportDialog(); }),
+                TextButton(onPressed: _requestAccountDeletion, child: const Text("Delete Hub Account Permanently", style: TextStyle(color: Colors.red, fontSize: 12))),
+                const SizedBox(height: 20),
+              ],
             ),
-            const SizedBox(height: 15),
-            ListTile(leading: const Icon(Icons.report_problem, color: Colors.orange), title: const Text("Report an Issue"), onTap: () { Navigator.pop(context); _showReportDialog(); }),
-            TextButton(onPressed: _requestAccountDeletion, child: const Text("Delete Hub Account Permanently", style: TextStyle(color: Colors.red, fontSize: 12))),
-            const SizedBox(height: 20),
-          ],
+          ),
         ),
       ),
     );
   }
-
-
 
   @override
   Widget build(BuildContext context) {

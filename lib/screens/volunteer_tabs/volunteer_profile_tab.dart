@@ -5,7 +5,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../landing_screen.dart';
-import '../gamification/impact_wrapped_screen.dart';
 import '../gamification/city_leaderboard_screen.dart';
 import '../gamification/squads_hub_screen.dart';
 import 'dart:convert';
@@ -82,51 +81,108 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
     );
   }
 
+  void _showReportDialog() {
+    final TextEditingController reportController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Report an Issue"),
+        content: TextField(
+          controller: reportController,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: "Describe the issue or suspicious behavior...", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            onPressed: () async {
+              if (reportController.text.trim().isNotEmpty) {
+                await FirebaseFirestore.instance.collection('reports').add({
+                  'reporterUid': widget.uid,
+                  'reporterName': widget.userData['name'],
+                  'reporterRole': 'Volunteer',
+                  'issue': reportController.text.trim(),
+                  'timestamp': FieldValue.serverTimestamp(),
+                  'status': 'Open',
+                });
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Report submitted. Thank you for your service!"), backgroundColor: Colors.green));
+                }
+              }
+            },
+            child: const Text("SUBMIT"),
+          )
+        ],
+      ),
+    );
+  }
+
   void _showEditProfile() {
     TextEditingController nameController = TextEditingController(text: widget.userData['name']);
     TextEditingController phoneController = TextEditingController(text: widget.userData['contact'] ?? '');
+    bool isVegOnly = widget.userData['isVegOnly'] ?? false;
     
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Edit Profile", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Full Name", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Phone Number", border: OutlineInputBorder())),
-            const SizedBox(height: 25),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: () async {
-                  await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
-                    'name': nameController.text.trim(),
-                    'contact': phoneController.text.trim(),
-                  });
-                  widget.onProfileUpdated();
-                  if (mounted) Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                child: const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Edit Profile", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: "Full Name", border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Phone Number", border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                SwitchListTile(
+                  title: const Text("Veg-Only Hero"),
+                  subtitle: const Text("I only pick up vegetarian food"),
+                  value: isVegOnly,
+                  activeColor: Colors.green,
+                  onChanged: (v) => setModalState(() => isVegOnly = v),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+                        'name': nameController.text.trim(),
+                        'contact': phoneController.text.trim(),
+                        'isVegOnly': isVegOnly,
+                      });
+                      widget.onProfileUpdated();
+                      if (mounted) Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                    child: const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                ListTile(
+                  leading: const Icon(Icons.report_problem, color: Colors.orange),
+                  title: const Text("Report an Issue"),
+                  onTap: () { Navigator.pop(context); _showReportDialog(); },
+                ),
+                const SizedBox(height: 30),
+              ],
             ),
-            const SizedBox(height: 30),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Future<void> _logout() async {
-    bool confirm = await showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Logout"), content: const Text("Exit business account?"), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("No")), TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes", style: TextStyle(color: Colors.red)))])) ?? false;
+    bool confirm = await showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Logout"), content: const Text("Exit account?"), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("No")), TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes", style: TextStyle(color: Colors.red)))])) ?? false;
     if (confirm) {
       await FirebaseAuth.instance.signOut();
       if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LandingScreen()), (r) => false);
@@ -137,7 +193,8 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
   Widget build(BuildContext context) {
     int rescues = widget.userData['deliveriesMade'] ?? 0;
     int points = widget.userData['rankScore'] ?? 0;
-    String city = widget.userData['city'] ?? 'Nadiad';
+    String city = widget.userData['city'] ?? '';
+    String img = widget.userData['profileImageUrl'] ?? '';
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -148,6 +205,12 @@ class _VolunteerProfileTabState extends State<VolunteerProfileTab> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                CircleAvatar(
+                  radius: 40, backgroundColor: Colors.green.shade50,
+                  backgroundImage: img.isNotEmpty ? MemoryImage(base64Decode(img)) : null,
+                  child: img.isEmpty ? const Icon(Icons.person, size: 40, color: Colors.green) : null,
+                ),
+                const SizedBox(height: 10),
                 Text(widget.userData['name'] ?? 'Hero', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 Text(city, style: const TextStyle(color: Colors.grey)),
               ],

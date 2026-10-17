@@ -6,12 +6,9 @@ import 'dart:convert';
 class NeedySpotsService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Senior Dev: Enhanced Overpass API integration for robust real-world data extraction.
-  // This query scans nodes and ways for diverse social amenities and extracts deep metadata.
   static Future<List<Map<String, dynamic>>> getNearbySpotsRealTime(double lat, double lon, String city) async {
     String cleanCity = city.trim();
     try {
-      // 1. Caching Logic (Valid for 30 days)
       DocumentSnapshot cityDoc = await _db.collection('city_spots').doc(cleanCity).get();
       
       if (cityDoc.exists) {
@@ -30,7 +27,6 @@ class NeedySpotsService {
       print("Cache error: $e");
     }
 
-    // 2. Market-Grade OSM Query
     final String query = """
       [out:json][timeout:30];
       (
@@ -52,22 +48,19 @@ class NeedySpotsService {
         
         for (var element in data['elements']) {
           var tags = element['tags'] ?? {};
-          // Handle both Nodes (lat/lon) and Ways (center)
           double sLat = element['lat'] ?? element['center']?['lat'] ?? 0.0;
           double sLon = element['lon'] ?? element['center']?['lon'] ?? 0.0;
           
           if (sLat == 0.0) continue;
 
-          // Scanning multiple possible tags to find the real identity
           String name = tags['name'] ?? tags['operator'] ?? tags['brand'] ?? 'Social Welfare Center';
           String type = tags['social_facility:for'] ?? tags['social_facility'] ?? tags['amenity'] ?? 'Welfare Center';
           
-          // Robust phone number scanning
-          String phone = tags['phone'] ?? 
+          String phone = tags['phone'] ??
                          tags['contact:phone'] ?? 
                          tags['mobile'] ?? 
                          tags['contact:mobile'] ?? 
-                         tags['operator:phone'] ?? '9925812345'; // Placeholder for market consistency
+                         tags['operator:phone'];
 
           results.add({
             'name': name,
@@ -79,7 +72,6 @@ class NeedySpotsService {
           });
         }
 
-        // 3. Cache the real-world results
         if (results.isNotEmpty) {
           await _db.collection('city_spots').doc(cleanCity).set({
             'spots': results,

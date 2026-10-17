@@ -10,7 +10,15 @@ class AdminDashboard extends StatefulWidget {
   State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
+class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
   Future<void> _updateStatus(String uid, String status) async {
     await FirebaseFirestore.instance.collection('users').doc(uid).update({
       'verificationStatus': status,
@@ -40,6 +48,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
     await FirebaseFirestore.instance.collection('users').doc(uid).update({'isSuspended': !current});
   }
 
+  Future<void> _resolveReport(String reportId) async {
+    await FirebaseFirestore.instance.collection('reports').doc(reportId).update({'status': 'Resolved'});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -47,50 +59,127 @@ class _AdminDashboardState extends State<AdminDashboard> {
       appBar: AppBar(
         backgroundColor: Colors.transparent, elevation: 0,
         title: const Text("SYSTEM AUTHORITY", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2)),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.amberAccent,
+          labelColor: Colors.amberAccent,
+          unselectedLabelColor: Colors.white54,
+          tabs: const [
+            Tab(text: "COMMUNITY", icon: Icon(Icons.people_outline)),
+            Tab(text: "REPORTS", icon: Icon(Icons.report_gmailerrorred)),
+          ],
+        ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (!snapshot.hasData) return const Center(child: Text("No data found.", style: TextStyle(color: Colors.white24)));
-          
-          var users = snapshot.data!.docs;
-          
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('donations').snapshots(),
-            builder: (context, donationSnap) {
-              int totalMeals = 0;
-              if (donationSnap.hasData) {
-                for (var d in donationSnap.data!.docs) {
-                  var data = d.data() as Map;
-                  if (data['status'] == 'Delivered' || data['status'] == 'Picked Up' || data['status'] == 'Accepted') {
-                    totalMeals += (data['quantity'] ?? 0) as int;
-                  }
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildCommunityTab(),
+          _buildReportsTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommunityTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData) return const Center(child: Text("No data found.", style: TextStyle(color: Colors.white24)));
+        
+        var users = snapshot.data!.docs;
+        
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('donations').snapshots(),
+          builder: (context, donationSnap) {
+            int totalMeals = 0;
+            if (donationSnap.hasData) {
+              for (var d in donationSnap.data!.docs) {
+                var data = d.data() as Map;
+                if (data['status'] == 'Delivered' || data['status'] == 'Picked Up' || data['status'] == 'Accepted') {
+                  totalMeals += (data['quantity'] ?? 0) as int;
                 }
               }
+            }
 
-              return ListView(
-                padding: const EdgeInsets.all(20),
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Row(
+                  children: [
+                    _statCard("TOTAL USERS", "${users.length}", Icons.people, Colors.blue),
+                    const SizedBox(width: 10),
+                    _statCard("MEALS SAVED", "$totalMeals", Icons.fastfood, Colors.greenAccent),
+                  ],
+                ),
+                const SizedBox(height: 30),
+                const Text("VERIFICATION QUEUE", style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                ...users.where((u) => (u.data() as Map)['verificationStatus'] == 'pending').map((u) => _buildManageCard(u, true)),
+                const SizedBox(height: 30),
+                const Text("MANAGE COMMUNITY", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
+                ...users.where((u) => (u.data() as Map)['verificationStatus'] != 'pending').map((u) => _buildManageCard(u, false)),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
+  Widget _buildReportsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('reports').orderBy('timestamp', descending: true).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No reported issues.", style: TextStyle(color: Colors.white24)));
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(20),
+          itemCount: snapshot.data!.docs.length,
+          itemBuilder: (context, index) {
+            var report = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+            String reportId = snapshot.data!.docs[index].id;
+            bool isResolved = report['status'] == 'Resolved';
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isResolved ? Colors.green.withOpacity(0.05) : Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isResolved ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.3))
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _statCard("TOTAL USERS", "${users.length}", Icons.people, Colors.blue),
-                      const SizedBox(width: 10),
-                      _statCard("MEALS SAVED", "$totalMeals", Icons.fastfood, Colors.greenAccent),
+                      Text(report['reporterRole'] ?? 'User', style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                      Text(report['status'] ?? 'Open', style: TextStyle(color: isResolved ? Colors.green : Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                  const SizedBox(height: 30),
-                  const Text("VERIFICATION QUEUE", style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                  ...users.where((u) => (u.data() as Map)['verificationStatus'] == 'pending').map((u) => _buildManageCard(u, true)),
-                  const SizedBox(height: 30),
-                  const Text("MANAGE COMMUNITY", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
-                  ...users.where((u) => (u.data() as Map)['verificationStatus'] != 'pending').map((u) => _buildManageCard(u, false)),
+                  const SizedBox(height: 5),
+                  Text(report['reporterName'] ?? 'Anonymous', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Text(report['issue'] ?? 'No description', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  const SizedBox(height: 15),
+                  if (!isResolved)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _resolveReport(reportId),
+                        icon: const Icon(Icons.check_circle_outline, size: 16),
+                        label: const Text("MARK AS RESOLVED"),
+                        style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
+                      ),
+                    ),
                 ],
-              );
-            }
-          );
-        },
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -153,7 +242,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _imgPreview(String b64, String label) {
-    return Column(children: [Text(label, style: const TextStyle(color: Colors.white24, fontSize: 8)), const SizedBox(height: 4), GestureDetector(onTap: () => showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.black, child: Column(mainAxisSize: MainAxisSize.min, children: [AppBar(title: Text(label), backgroundColor: Colors.transparent), Image.memory(base64Decode(b64)), TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CLOSE", style: TextStyle(color: Colors.white)))]))), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(b64), height: 80, width: double.infinity, fit: BoxFit.cover)))]);
+    try {
+      return Column(children: [Text(label, style: const TextStyle(color: Colors.white24, fontSize: 8)), const SizedBox(height: 4), GestureDetector(onTap: () => showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.black, child: Column(mainAxisSize: MainAxisSize.min, children: [AppBar(title: Text(label), backgroundColor: Colors.transparent), Image.memory(base64Decode(b64)), TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CLOSE", style: TextStyle(color: Colors.white)))]))), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(b64), height: 80, width: double.infinity, fit: BoxFit.cover)))]);
+    } catch (e) {
+      return const SizedBox();
+    }
   }
 
   Widget _statCard(String t, String v, IconData i, Color c) {

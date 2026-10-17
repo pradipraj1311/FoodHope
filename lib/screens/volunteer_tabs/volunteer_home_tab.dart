@@ -157,7 +157,6 @@ class _VolunteerHomeTabState extends State<VolunteerHomeTab> {
                 List<DocumentSnapshot> filteredDocs = snapshot.data!.docs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
                   
-                  // SENIOR DEV FILTER: Respect Veg-Only preference
                   if (vIsVegOnly && data['foodType'] == 'Non-Veg') return false;
 
                   if (data['exactExpiryTime'] == null) return false;
